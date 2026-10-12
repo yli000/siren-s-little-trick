@@ -12,7 +12,8 @@
  *   result  0.8s   这一句的档位停留；测底噪
  *   → 下一句；整句几乎没出声 → 她再唱一遍（最多两次，之后静静进入下一句）
  *
- * 暂停：立刻停掉所有声音与采样；继续时从当前这一句的 listen 重新开始。
+ * 暂停：立刻停掉所有声音、采样，释放麦克风；继续时重新拿麦克风（继续按钮就是手势），
+ *       从当前这一句的 listen 重新开始；若这一句已经判完（停在 result），直接进入下一步。
  *
  * 前端只通过 getState()（每帧读）和少量事件（note / phase / finish / notice）与本模块交互。
  * 本文件不触碰 document / window 渲染（D0 硬规则 1）；不返回任何中文文案（D7.4）。
@@ -107,9 +108,18 @@
    * 申请麦克风。⚠️ 必须在用户手势里调用（容器要求）。
    * @returns {Promise<boolean>}
    */
+  var micPending = null;   // 正在等授权时再点一次：返回同一个 Promise，不会开出两路麦克风
+
   function requestMic() {
     if (micStub) { mic.state = 'granted'; return Promise.resolve(true); }
     if (mic.analyser) return Promise.resolve(true);
+    if (micPending) return micPending;
+    micPending = openMic();
+    micPending.then(function () { micPending = null; });
+    return micPending;
+  }
+
+  function openMic() {
     var nav = global.navigator;
     if (!nav || !nav.mediaDevices || typeof nav.mediaDevices.getUserMedia !== 'function') {
       mic.state = 'denied';
@@ -123,6 +133,7 @@
       return Promise.resolve(false);
     }
     return Promise.resolve(req).then(function (stream) {
+      if (mic.stream && mic.stream !== stream) { try { mic.stream.getTracks().forEach(function (tr) { tr.stop(); }); } catch (e) { /* 忽略 */ } }
       var c = Audio.ensureAudio();
       mic.stream = stream;
       mic.source = c.createMediaStreamSource(stream);
@@ -187,9 +198,9 @@
       song: null, shift: 0, phraseIdx: 0, phraseCount: 0, phrases: [],
       practice: null, exercise: null,
       notes: [], phraseMs: 0, beatMs: 600, tonic: 60,
-      judge: null, results: [], ks: [], ls: [], tiers: [], trace: [], level: 0,
+      judge: null, results: [], ks: [], kws: [], ls: [], tiers: [], trace: [], level: 0,
       quietRetries: 0, again: false, againReason: null, t0: 0, sangFrames: 0,
-      tap: false, finished: null, humSamples: []
+      tap: false, finished: null, humSamples: [], next: null, pausedAt: 0, resuming: false
     };
   }
 
@@ -275,6 +286,7 @@
     var opts = {
       keyFree: S.kind === 'song' ? true : S.practice.current().keyFree !== false,
       kInit: S.ks.length ? S.ks[S.ks.length - 1] : 0,
+      kWeight: S.kws.length ? S.kws[S.kws.length - 1] : Judge.config().K_PRIOR_FIRST,
       lInit: S.ls.length ? S.ls[S.ls.length - 1] : Progress.latency(),
       noiseFloor: mic.noise
     };
@@ -355,19 +367,19 @@
     }
 
     var quiet = res.silent && !S.tap;
-    if (quiet && mic.peak > 0 && mic.peak < CFG.LOW_INPUT_RMS) emit('notice', { code: 'LOW_INPUT' });
+    if (quiet && micReady() && mic.peak < CFG.LOW_INPUT_RMS) emit('notice', { code: 'LOW_INPUT' });
 
     setPhase('result');
     sampleNoise(CFG.RESULT_MS - 250);
     var r = { phraseIdx: S.phraseIdx, score: res.score, silent: quiet, tiers: S.tiers.slice(), k: res.k, l: res.l };
     emit('phraseEnd', r);
 
-    if (quiet && S.quietRetries < CFG.MAX_QUIET_RETRIES) {
-      // 几乎没出声：不给档位，她再唱一遍（审查第 7 条）
+    if (quiet && S.kind === 'song' && S.quietRetries < CFG.MAX_QUIET_RETRIES) {
+      // 几乎没出声：不给档位，她再唱一遍（审查第 7 条）。练习不走这条：没出声也算一遍，最多 3 遍
       S.quietRetries += 1;
       S.again = true;
       S.againReason = 'quiet';
-      later(startListen, CFG.RESULT_MS);
+      then(startListen);
       return;
     }
     S.again = false;
@@ -375,23 +387,33 @@
     S.quietRetries = 0;
     if (!quiet) {
       S.ks.push(res.k);
+      S.kws.push(Judge.priorWeight ? Judge.priorWeight(res.kSupport) : 1);
       S.ls.push(res.l);
     }
 
     if (S.kind === 'song') {
       S.results.push(r);
-      if (S.phraseIdx + 1 < S.phraseCount) {
-        later(function () { S.phraseIdx += 1; startListen(); }, CFG.RESULT_MS);
-      } else {
-        later(finishSong, CFG.RESULT_MS);
-      }
+      if (S.phraseIdx + 1 < S.phraseCount) then(function () { S.phraseIdx += 1; startListen(); });
+      else then(finishSong);
     } else {
       var verdict = S.practice.report({ score: res.score, silent: quiet });
       S.again = verdict === 'retry';
-      S.againReason = S.again ? 'retry' : null;
-      if (verdict === 'done') later(finishPractice, CFG.RESULT_MS);
-      else later(nextPracticeItem, CFG.RESULT_MS);
+      S.againReason = S.again ? (quiet ? 'quiet' : 'retry') : null;
+      then(verdict === 'done' ? finishPractice : nextPracticeItem);
     }
+  }
+
+  /**
+   * 这一句判完后的下一步：结果停留 RESULT_MS 后执行。
+   * 记在 S.next 里——在结果停留时暂停，继续时直接执行它，不会把判完的这一句再唱一遍。
+   */
+  function then(fn) {
+    S.next = fn;
+    later(function () {
+      if (!S || S.next !== fn) return;
+      S.next = null;
+      fn();
+    }, CFG.RESULT_MS);
   }
 
   // ---------------------------------------------------------------- 一首歌
@@ -461,11 +483,15 @@
 
   function finishPractice() {
     if (!S) return;
+    // 只有这一遍真的测到了东西（第 1 组哼到了舒服的音、第 4 组至少过了一级）才存、才说「她记住你的调了」
     var learned = S.practice.learned();
     var keys = Object.keys(learned);
-    if (keys.length) Progress.setRange(learned);
+    if (keys.length) {
+      if (learned.comfort && S.exercise === 'find') learned.fromFind = true;
+      Progress.setRange(learned);
+    }
     Progress.markPractice(S.exercise);
-    S.finished = { kind: 'practice', exercise: S.exercise, learnedRange: !!(learned.comfort || learned.hi) };
+    S.finished = { kind: 'practice', exercise: S.exercise, learnedRange: keys.length > 0 };
     setPhase('done');
     emit('finish', S.finished);
   }
@@ -534,24 +560,44 @@
     token += 1;
     stopTimers();
     Audio.stopPlayback();
+    Audio.seaLevel(0, 0.15);
+    releaseMic();
     S.paused = true;
+    S.pausedAt = clock.now();
     S.judge = null;
     S.level = 0;
     emit('pause', { phraseIdx: S.phraseIdx });
   }
 
-  /** 从当前这一句的「听她唱」重新开始 */
+  /**
+   * 继续：⚠️ 要在点击里调用（会重新拿麦克风）。
+   * 这一句已经判完（停在 result）→ 直接进入下一步；否则从这一句的「听她唱」重新开始。
+   */
   function resume() {
-    if (!S || !S.paused) return;
-    S.paused = false;
-    S.again = false;
-    Audio.ensureAudio();
-    if (S.kind === 'hum') { startHum(); return; }
-    if (S.kind === 'practice') {
-      var item = S.practice.current();
-      if (item && item.kind === 'hum') { nextPracticeItem(); return; }
-    }
-    startListen();
+    if (!S || !S.paused || S.resuming) return;
+    var mine = S;
+    S.resuming = true;
+    var ready = mic.state === 'granted' && !micReady() ? requestMic() : Promise.resolve(true);
+    ready.then(function () {
+      if (S !== mine || !S.paused) return;
+      S.resuming = false;
+      S.paused = false;
+      Audio.ensureAudio();
+      if (S.next) {
+        var n = S.next;
+        S.next = null;
+        n();
+        return;
+      }
+      S.again = false;
+      if (S.kind === 'hum') { startHum(); return; }
+      if (S.kind === 'practice') {
+        var item = S.practice.current();
+        if (!item) { finishPractice(); return; }
+        if (item.kind === 'hum') { nextPracticeItem(); return; }
+      }
+      startListen();
+    });
   }
 
   function restart() {
@@ -578,10 +624,11 @@
 
   function getState() {
     if (!S) return { kind: null, phase: 'idle' };
+    var now = S.paused ? S.pausedAt : clock.now();   // 暂停时画面停住
     return {
       kind: S.kind,
       phase: S.phase,
-      phaseT: clock.now() - S.phaseAt,
+      phaseT: now - S.phaseAt,
       paused: S.paused,
       songId: S.song ? S.song.id : null,
       exercise: S.exercise,
@@ -593,7 +640,7 @@
       beatMs: S.beatMs,
       listenLeadMs: CFG.LISTEN_LEAD_S * 1000,
       countinLeadMs: CFG.COUNTIN_LEAD_MS,
-      singT: clock.now() - S.t0,
+      singT: now - S.t0,
       tiers: S.tiers,
       trace: S.trace,
       live: S.judge ? S.judge.live() : { k: 0, l: 0 },
@@ -608,6 +655,9 @@
 
   function init() {
     return Store.init().then(function () {
+      // 上次的授权结果：允许过就不再弹说明卡，拒绝过就直接走点按（设置里可以再试）
+      var ok = Store.get(Store.KEYS.MIC_OK, null);
+      if (mic.state === 'unknown' && ok !== null) mic.state = Store.getBool(Store.KEYS.MIC_OK, false) ? 'granted' : 'denied';
       Audio.setSfxMuted(Progress.sfxOff());
       return true;
     });

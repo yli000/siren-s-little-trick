@@ -27,7 +27,9 @@ from playwright.async_api import async_playwright
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "game"))
 
 MIC_SCRIPT = """(() => {
-  window.__qa = { semis: 0, latency: 90, silentPhrase: -1, humMidi: 60, on: true };
+  window.__qa = { semis: 0, latency: 90, silentPhrase: -1, humMidi: 60, on: true, streams: [] };
+  // 还开着的麦克风有几路（手机上的麦克风指示灯）
+  window.__micLive = () => window.__qa.streams.filter((s) => s.getTracks().some((t) => t.readyState === 'live')).length;
   if (!navigator.mediaDevices) return;
   Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -51,6 +53,7 @@ MIC_SCRIPT = """(() => {
       if (midi) { osc.frequency.setValueAtTime(hz(midi), ctx.currentTime); gain.gain.setTargetAtTime(0.3, ctx.currentTime, 0.005); }
       else gain.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
     }, 10);
+    window.__qa.streams.push(dest.stream);
     return dest.stream;
   }});
 })();"""
@@ -156,6 +159,7 @@ async def run(args):
         good = len([t for t in notes if t in ("perfect", "great")])
         R.check("合成歌手唱得准：Perfect/Great 为主", good >= len(notes) * 0.8, "%d/%d" % (good, len(notes)))
         R.check("唱完立刻存档", await page.evaluate("Siren.Progress.collectedCount()") == 1)
+        R.check("出船时麦克风已释放", await page.evaluate("__micLive()") == 0)
         await page.wait_for_timeout(9000)
         await shot(page, "05-arrive")
         R.check("结尾：介绍卡打完字后出现按钮", await page.evaluate("!!document.getElementById('screen')"))
@@ -171,15 +175,36 @@ async def run(args):
         await page.wait_for_timeout(100)
         R.check("返回键 = 暂停", await page.evaluate("Siren.Session.getState().paused"))
         R.check("暂停后 100ms 内没有她的歌声", await page.evaluate("Siren.Audio.voiceCount()") == 0)
+        R.check("暂停：麦克风释放", await page.evaluate("__micLive()") == 0)
+        await page.wait_for_timeout(250)
+        R.check("暂停：海浪也停", await page.evaluate("Siren.Audio.stats().seaGain") < 0.05, await page.evaluate("Siren.Audio.stats().seaGain"))
         await shot(page, "06-pause")
         await page.keyboard.press("Enter")
         R.check("继续：从这一句的「听她唱」重新开始", await wait_for(page, "Siren.Session.getState().phase === 'listen' && !Siren.Session.getState().paused", 2000))
+        R.check("继续：重新拿到麦克风", await page.evaluate("__micLive()") == 1)
         await page.wait_for_timeout(600)
         await page.evaluate("Siren.Session.pause()")
         await page.wait_for_timeout(100)
         await tap(page, 90, (H - 128) // 2 + 92 + 12)   # 退出
         await page.wait_for_timeout(150)
         R.check("退出：回到选歌，没有残留的歌声", await page.evaluate("__siren.name === 'select' && Siren.Audio.voiceCount() === 0 && Siren.Session.getState().phase === 'idle'"))
+        R.check("退出：麦克风已释放", await page.evaluate("__micLive()") == 0)
+
+        # 切后台：自动暂停，整个音频挂起；回来再恢复
+        await page.evaluate("__siren.startSong(Siren.SONGS[1])")
+        await wait_for(page, "Siren.Session.getState().phase === 'listen'", 5000)
+        await page.wait_for_timeout(600)
+        HIDE = "(h) => { Object.defineProperty(document, 'hidden', { value: h, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }"
+        await page.evaluate(HIDE, True)
+        await page.wait_for_timeout(300)
+        R.check("切后台：自动暂停、麦克风释放、音频挂起",
+                await page.evaluate("Siren.Session.getState().paused && __micLive() === 0 && Siren.Audio.stats().state === 'suspended'"),
+                await page.evaluate("JSON.stringify([Siren.Session.getState().paused, __micLive(), Siren.Audio.stats().state])"))
+        await page.evaluate(HIDE, False)
+        await page.wait_for_timeout(300)
+        R.check("回到前台：音频恢复，停在暂停层", await page.evaluate("Siren.Audio.stats().state === 'running' && Siren.Session.getState().paused"))
+        await page.evaluate("__siren.go('select')")
+        await page.wait_for_timeout(200)
 
         # ------------------------------------------------------------ 3. 练习
         print("练习")
@@ -220,6 +245,36 @@ async def run(args):
         await page.wait_for_timeout(400)
         await shot(page, "10-tap")
         R.check("麦克风状态：未允许", await page.evaluate("Siren.Session.micState()") == "denied")
+        await ctx.close()
+
+        # ------------------------------------------------------------ 5b. 重开、说明卡、哼一声的返回
+        print("重开与返回")
+        ctx = await browser.new_context(viewport={"width": 390, "height": 760}, device_scale_factor=2, locale="zh-CN")
+        await ctx.add_init_script(MIC_SCRIPT)
+        page = await ctx.new_page()
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        await page.goto(url)
+        await wait_for(page, "!!(window.__siren && __siren.name === 'title')", 5000)
+        await page.evaluate("__siren.go('practice')")
+        await page.wait_for_timeout(300)
+        await page.evaluate("__siren.startPractice('steps')")
+        R.check("说明卡出现", await wait_for(page, "!!__siren.modal", 2000))
+        await page.go_back()
+        await page.wait_for_timeout(200)
+        R.check("说明卡打开时按返回：只关掉卡片", await page.evaluate("!__siren.modal && __siren.name === 'practice'"))
+        await page.evaluate("__siren.startPractice('steps')")
+        await wait_for(page, "!!__siren.modal", 2000)
+        await page.keyboard.press("Enter")
+        R.check("从练习进「哼一声」", await wait_for(page, "__siren.name === 'hum'", 3000))
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(200)
+        R.check("「哼一声」返回：回到练习，麦克风释放", await page.evaluate("__siren.name === 'practice' && __micLive() === 0"))
+        await page.reload()
+        await wait_for(page, "!!(window.__siren && __siren.name === 'title')", 5000)
+        await page.evaluate("Siren.Progress.setOnboarded(); __siren.startSong(Siren.SONGS[0])")
+        R.check("重开后再唱：不再弹麦克风说明卡", await wait_for(page, "__siren.name === 'play'", 3000) and not await page.evaluate("!!__siren.modal"))
+        R.check("（这一段）没有脚本错误", not errors, errors[:3])
         await ctx.close()
 
         # ------------------------------------------------------------ 6. 版面：三种尺寸

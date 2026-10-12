@@ -132,8 +132,8 @@
           }
         }
       }
-      var rec = st.phase === 'sing' || st.phase === 'countin' || st.phase === 'hum';
-      var face = singing ? 'sing' : rec ? 'listen' : 'calm';
+      var rec = !st.paused && (st.phase === 'sing' || st.phase === 'countin' || st.phase === 'hum');
+      var face = singing && !st.paused ? 'sing' : rec ? 'listen' : 'calm';
       if (rec) P.vg = Math.max(P.vg * Math.pow(0.3, dt), st.level || 0);
       else P.vg *= Math.pow(0.3, dt);
       var base = P.kind === 'song' ? [0, 0, 0.35, 0.7, 1][Gfx.STAGES.indexOf(P.cur)] || 0 : 0;
@@ -274,7 +274,7 @@
     var g = Gfx.ctx();
     var W = Gfx.W();
     var L = Gfx.L;
-    var rec = st.phase === 'sing' || st.phase === 'hum' || (st.phase === 'countin' && st.tap);
+    var rec = !st.paused && (st.phase === 'sing' || st.phase === 'hum' || (st.phase === 'countin' && st.tap));
     var cx = W / 2;
     var cy = L.micY;
     if (rec) {
@@ -287,7 +287,7 @@
     Gfx.disc(g, cx, cy, 16, C.INK);
     Gfx.disc(g, cx, cy, 15, rec ? C.CORAL : C.NAVY_L);
     if (rec) Gfx.spr(g, 'i_mic', cx - 5, cy - 7); else Gfx.spr(g, 'i_note2', cx - 5, cy - 5);
-    if (st.tap && (st.phase === 'sing' || st.phase === 'countin')) {
+    if (st.tap && !st.paused && (st.phase === 'sing' || st.phase === 'countin')) {
       UI.hit('tapdisc', cx - 22, cy - 22, 44, 44, function () { Session.tap(); }, { silent: true });
     }
   }
@@ -333,7 +333,8 @@
         }
       }
     }
-    if (st.tap && st.phase === 'sing' && st.singT >= 450) Gfx.text(g, t_('tapHint'), W / 2, py - 22, { c: C.CREAM, a: 'c', o: C.INK });
+    // 点按提示放在档位标签（py − 14 往上飘）的上面，不叠在一起
+    if (st.tap && st.phase === 'sing' && st.singT >= 450) Gfx.text(g, t_('tapHint'), W / 2, py - 42, { c: C.CREAM, a: 'c', o: C.INK });
     if (st.phase === 'hum') {
       Gfx.text(g, t_('humTitle'), W / 2, py - 44, { c: C.GOLD, s: 2, a: 'c', o: C.INK, sh: C.INK });
       Gfx.text(g, t_('humHint'), W / 2, py - 16, { c: C.CREAM, a: 'c', o: C.INK });
@@ -381,11 +382,12 @@
 
   // ================================================================ 哼一声试试（第一次唱之前）
 
-  var H = { next: null, result: null, at: 0 };
+  var H = { next: null, result: null, at: 0, from: 'select' };
 
   Screens.hum = {
     enter: function (p) {
       H.next = p.next;
+      H.from = p.from === 'practice' ? 'practice' : 'select';
       H.result = null;
       Session.startHum();
     },
@@ -397,7 +399,7 @@
       var st = Session.getState();
       Gfx.world(st.phase === 'hum' ? 'listen' : 'calm', t, null, Gfx.STAGES[0], 1, Math.min(0.8, (st.level || 0) * 0.8));
       Gfx.drawParts();
-      UI.topBar(null, function () { App().go('select'); });
+      UI.topBar(null, function () { App().go(H.from); });
       var py = L.panelY;
       Gfx.panel(g, 8, py, 164, 62, 8, C.NAVY, C.NAVY_LL, C.INK);
       if (!H.result) {
@@ -418,7 +420,7 @@
         UI.btn('humskip', 92, py + 18, 72, 26, t_('skip'), function () { Progress.setOnboarded(); H.next(); }, { locked: locked });
       }
     },
-    back: function () { App().go('select'); }
+    back: function () { App().go(H.from); }
   };
 
   // ================================================================ 结尾：一艘船循着歌声开过来

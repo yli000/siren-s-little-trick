@@ -80,6 +80,21 @@
    * 保证 AudioContext 已创建并处于 running。
    * ⚠️ 必须在用户手势内调用（iOS 关键）。
    */
+  var held = false;   // 切到后台时整个 AudioContext 挂起，回到前台前不自动恢复
+
+  /** 切后台：挂起整个音频（海浪、音效、她的声音一起停），回来时 wake() */
+  function hold() {
+    held = true;
+    if (ctx && ctx.state === 'running' && typeof ctx.suspend === 'function') {
+      var p = ctx.suspend();
+      if (p && typeof p.catch === 'function') p.catch(function () { /* 忽略 */ });
+    }
+  }
+  function wake() {
+    held = false;
+    if (ctx) ensureAudio();
+  }
+
   function ensureAudio() {
     if (!ctx) {
       var Ctor = global.AudioContext || global.webkitAudioContext;
@@ -87,7 +102,7 @@
       ctx = new Ctor();
       buildOutputChain();
     }
-    if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+    if (!held && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
       // 返回 Promise，但调用方可能不 await；这里不阻塞
       var p = ctx.resume();
       if (p && typeof p.catch === 'function') p.catch(function () { /* 忽略 */ });
@@ -571,6 +586,8 @@
       sfxMuted: sfxMuted,
       voices: voiceCount(),
       sea: !!sea,
+      seaGain: sea ? sea.gain.gain.value : 0,
+      held: held,
       wet: WET,
       bpm: BPM
     };
@@ -645,6 +662,8 @@
 
   Siren.Audio = {
     ensureAudio: ensureAudio,
+    hold: hold,
+    wake: wake,
     ready: ready,
     playPhrase: playPhrase,
     playTone: playTone,

@@ -74,7 +74,7 @@ const check = (name, ok, detail = '') => {
 // ---------------------------------------------------------------- 1. 纯正弦精度
 
 console.log('【1】纯正弦音高精度（音分误差）');
-console.log('    音域覆盖：低八度哼唱 C3 → 女声高音 E5（即 D4 规定的 90–660Hz）');
+console.log('    音域覆盖：低八度哼唱 C3 → 女声高音 G5（90–820Hz；v2 由 660Hz 放宽，见 pitch.js HZ_MAX）');
 const SINE_CASES = [
   { name: 'C3', hz: 130.81 },
   { name: 'G3', hz: 196.00 },
@@ -85,6 +85,8 @@ const SINE_CASES = [
   { name: 'C5', hz: 523.25 },
   { name: 'D5', hz: 587.33 },
   { name: 'E5', hz: 659.26 },
+  { name: 'F#5', hz: 739.99 },
+  { name: 'G5', hz: 783.99 },
 ];
 
 let worstSine = 0;
@@ -202,7 +204,7 @@ const OCTAVE_CASES = [
   { hz: 1046.50, name: 'C6', wrong: 'C5 (523Hz)' },
   { hz: 880.00, name: 'A5', wrong: 'A4 (440Hz)' },
   { hz: 1500.00, name: 'F#6', wrong: '约 500Hz' },
-  { hz: 784.00, name: 'G5', wrong: 'G4 (392Hz)' },
+  { hz: 932.33, name: 'A#5', wrong: 'A#4 (466Hz)' },
 ];
 let octaveLeaks = 0;
 for (const c of OCTAVE_CASES) {

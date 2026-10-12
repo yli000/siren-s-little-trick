@@ -99,7 +99,7 @@
     var ladderUpFailed = false;
     var ladderHi = null;
     var ladderLo = null;
-    var learned = { comfort: comfort > 0 ? comfort : 0 };
+    var measured = 0;   // 这一遍哼到的舒服音高（没哼到就是 0，不覆盖已存的）
     var T = tonicFor(comfort);
 
     function skipFailedUpRungs() {
@@ -116,7 +116,7 @@
       /** 哼一声测到了舒服音高：重新出题（后面的长音以它为准） */
       setComfort: function (midi) {
         if (!(midi > 0)) return;
-        learned.comfort = midi;
+        measured = midi;
         var rest = itemsFor(id, midi);
         items = items.slice(0, idx + 1).concat(rest.slice(idx + 1));
         T = tonicFor(midi);
@@ -155,11 +155,11 @@
         }
         return 'retry';
       },
-      /** 练完后要存下来的音区信息（不是每组都有） */
+      /** 这一遍练完后测到的音区信息（不是每组都有；什么都没测到就是 {}） */
       learned: function () {
         var out = {};
-        if (learned.comfort > 0) out.comfort = learned.comfort;
-        if (id === 'ladder') {
+        if (measured > 0) out.comfort = measured;
+        if (id === 'ladder' && (ladderHi !== null || ladderLo !== null)) {
           // 音型最高是 3（主音上 4 个半音）
           out.hi = T + 4 + (ladderHi === null ? 0 : ladderHi);
           out.lo = T + (ladderLo === null ? 0 : ladderLo);

@@ -5,8 +5,10 @@
  *
  * 思路（K 歌游戏的通行做法）：不切音符，**每一帧都拿玩家的音高去对这一刻该唱的目标音**。
  *   1. 有效帧：有音高，且电平高于静音门槛（底噪 × 1.8，且不高于本句峰值的 20%）
- *   2. 估整体偏移：时间偏移 L（−150～+300ms，25ms 一档穷举）× 调偏移 K（折八度后的众数附近）
- *      → 选让「唱中程度」最高的一组
+ *   2. 估整体偏移：时间偏移 L（−150～+300ms，25ms 一档穷举，只看什么时候在出声）；
+ *      调偏移 K = 折八度后差值的众数，**判第 i 个音时不用它自己的帧**（留一法）：
+ *      每个音算一票，再加上前几句定下的调（先验）。第一句还没有调时，第 0、1 个音借后一个音来定。
+ *      否则 K 会跟着正在判的音走，随便哼一个音都是 Perfect（QA 实测：单音哼 18/26 Perfect）
  *   3. 一帧的得分：与目标音（加 K）的差折八度后 ≤ 50 音分记 1，≥ 120 音分记 0，中间线性
  *   4. 一个音的准确度 a：它的时间窗（平移 L，前 60ms 不算）里所有帧（含没出声的帧）的平均得分
  *   5. 档位：a ≥ .75 Perfect / ≥ .5 Great / ≥ .25 Good / 其余 Miss
@@ -18,7 +20,7 @@
  *   · 半音：没有"走向"维度，也就没有 Math.round(±0.5) 的不对称
  *   · 整体调 / 整体延迟：K、L 每次判音都参与，屏幕上的档位和分数用的是同一套补偿
  *
- * 实时：每个音在「结束 + L + 300ms」后判定并冻结，之后不再改。
+ * 实时：每个音在「结束 + L + 300ms」后判定并冻结，之后不再改（一首歌第一句的第 0、1 个音各晚一个音）。
  *
  * 本文件不触碰 document / window 渲染（D0 硬规则 1）；不返回任何中文文案（D7.4）。
  */
@@ -43,7 +45,10 @@
     SILENT_RATIO: 0.12,       // 一句里有声帧比例低于此值 → 视为"没出声"
     TIERS: [['perfect', 0.75], ['great', 0.5], ['good', 0.25]],
     TAP_TIERS: [['perfect', 100], ['great', 180], ['good', 300]],
-    TAP_WINDOW_MS: 400
+    TAP_WINDOW_MS: 400,
+    K_PRIOR_FIRST: 0.5,       // 一首歌第一句：调的先验只算半个音的票（几乎由你自己定）
+    K_PRIOR_MIN: 1,           // 之后各句：上一句有 1 个音以上支持这个调 → 1 票，3 个以上 → 1.5 票
+    K_PRIOR_MAX: 1.5          //   （一个音唱偏不会把调带跑；真换了调，两个音之后就跟上）
   };
 
   // ---------------------------------------------------------------- 小工具
@@ -92,14 +97,18 @@
    * 估计整体时间偏移 L 与调偏移 K。
    * @param {Array} notes   目标音 [{midi, startMs, durMs}]
    * @param {Array} frames  帧 [{t, hz, midi, rms}]
-   * @param {Object} o      { keyFree, kInit, lInit, silence, upto }  upto = 只用前几个音（含）
-   * @returns {{l:number, k:number, hits:number}}
+   * @param {Object} o      { keyFree, kInit, kWeight, lInit, silence, upto, skip }
+   *                        upto = 估 K 只用到第几个音（含）；skip = 估 K 时跳过的音（正在判的那个）；
+   *                        kWeight = 先验 kInit 算几个音的票
+   * @returns {{l:number, k:number, hits:number, voiced:number}}
    */
   function estimate(notes, frames, o) {
     var keyFree = o.keyFree !== false;
     var lInit = o.lInit || 0;
     var kInit = keyFree ? (o.kInit || 0) : 0;
+    var kWeight = o.kWeight || 0;
     var upto = o.upto === undefined ? notes.length - 1 : o.upto;
+    var skip = o.skip === undefined ? -1 : o.skip;
     var silence = o.silence || 0;
 
     // 第一步：时间偏移 L 只看"什么时候在出声"，不看音高。
@@ -121,46 +130,57 @@
       act -= Math.abs(L - lInit) * 0.004;
       if (act > bestAct) { bestAct = act; bestL = L; }
     }
-    if (!voicedCount) return { l: lInit, k: kInit, hits: 0 };
+    if (!voicedCount) return { l: lInit, k: kInit, hits: 0, voiced: 0 };
 
-    // 第二步：在这个 L 下，调偏移 K 取折八度差值的众数（练习要求对准时 K = 0）
-    var diffs = [];
+    // 第二步：在这个 L 下估调偏移 K（练习要求对准时 K = 0）。
+    //   每个音算一票（票平分给它的各帧），免得一个长音唱偏就把调带跑。
+    var per = {};
+    var order = [];
     for (var m = 0; m < frames.length; m += 1) {
       var g = frames[m];
       if (!isVoiced(g, silence)) continue;
       var tt = g.t - bestL;
       var ni = noteIndexAt(notes, tt);
-      if (ni < 0 || ni > upto) continue;
+      if (ni < 0 || ni > upto || ni === skip) continue;
       if (tt < notes[ni].startMs + CFG.ONSET_GRACE_MS) continue;
-      diffs.push(fold(g.midi - notes[ni].midi));
+      if (!per[ni]) { per[ni] = []; order.push(ni); }
+      per[ni].push(fold(g.midi - notes[ni].midi));
     }
-    if (!diffs.length) return { l: bestL, k: kInit, hits: 0 };
-    var K = keyFree ? modeOf(diffs, kInit) : 0;
+    var diffs = [];
+    var wts = [];
+    for (var q = 0; q < order.length; q += 1) {
+      var arr = per[order[q]];
+      for (var r = 0; r < arr.length; r += 1) { diffs.push(arr[r]); wts.push(1 / arr.length); }
+    }
+    if (!diffs.length) return { l: bestL, k: kInit, hits: 0, voiced: voicedCount };
+    var K = keyFree ? modeOf(diffs, wts, kInit, kWeight) : 0;
     var hits = 0;
     for (var j = 0; j < diffs.length; j += 1) hits += credit(diffs[j] - K);
-    return { l: bestL, k: K, hits: hits };
+    return { l: bestL, k: K, hits: hits, voiced: voicedCount };
   }
 
   /**
-   * 折八度差值的"众数"：取让 ±0.5 半音内帧数最多的中心，再在 ±0.75 内取平均细化。
-   * 平手时偏向 prior（上一句的 K）。
+   * 折八度差值的加权"众数"：取让 ±0.5 半音内票数最多的中心，再在 ±0.75 内取加权平均细化。
+   * prior（前几句定下的 K）算 weight 票；平手时偏向 prior。
    */
-  function modeOf(diffs, prior) {
+  function modeOf(diffs, wts, prior, weight) {
+    var w = weight || 0;
     var bestC = prior;
-    var bestN = -1;
+    var bestN = -Infinity;
     var cands = diffs.concat([prior]);
     for (var i = 0; i < cands.length; i += 1) {
       var c = cands[i];
-      var n = 0;
-      for (var j = 0; j < diffs.length; j += 1) if (Math.abs(fold(diffs[j] - c)) <= 0.5) n += 1;
-      n -= Math.abs(fold(c - prior)) * 0.01;
-      if (n > bestN) { bestN = n; bestC = c; }
+      var n = Math.abs(fold(prior - c)) <= 0.5 ? w : 0;
+      for (var j = 0; j < diffs.length; j += 1) if (Math.abs(fold(diffs[j] - c)) <= 0.5) n += wts[j];
+      n -= Math.abs(fold(c - prior)) * 0.001;
+      if (n > bestN + 1e-9) { bestN = n; bestC = c; }
     }
-    var sum = 0;
-    var cnt = 0;
+    var dp = fold(prior - bestC);
+    var sum = Math.abs(dp) <= 0.75 ? dp * w : 0;
+    var cnt = Math.abs(dp) <= 0.75 ? w : 0;
     for (var k = 0; k < diffs.length; k += 1) {
       var d = fold(diffs[k] - bestC);
-      if (Math.abs(d) <= 0.75) { sum += d; cnt += 1; }
+      if (Math.abs(d) <= 0.75) { sum += d * wts[k]; cnt += wts[k]; }
     }
     return fold(bestC + (cnt ? sum / cnt : 0));
   }
@@ -189,14 +209,16 @@
   /**
    * 创建一句的判定器。
    * @param {Array} notes  目标音（毫秒，0 = 第一个音该开口的时刻）
-   * @param {Object} [opts] keyFree（默认 true）/ kInit / lInit / noiseFloor
+   * @param {Object} [opts] keyFree（默认 true）/ kInit / kWeight（先验算几个音的票，默认 0.5）/ lInit / noiseFloor
    */
   function create(notes, opts) {
     opts = opts || {};
     var frames = [];
     var judged = [];
     var peak = 0;
-    var k = opts.keyFree === false ? 0 : (opts.kInit || 0);
+    var k0 = opts.keyFree === false ? 0 : (opts.kInit || 0);
+    var kW = opts.kWeight === undefined ? CFG.K_PRIOR_FIRST : opts.kWeight;
+    var k = k0;
     var l = opts.lInit || 0;
     var noise = opts.noiseFloor || 0;
     var keyFree = opts.keyFree !== false;
@@ -219,10 +241,45 @@
       return total ? v / total : 0;
     }
 
+    /**
+     * 还没有可靠的调（一首歌的第一句）时，第 0、1 个音要借后一个音来定调；
+     * 有了前几句的调，就只看前面的音 + 先验，判定不拖后。
+     */
+    function looksAhead(i) {
+      return keyFree && kW < CFG.K_PRIOR_MIN && i <= 1 && i + 1 < notes.length;
+    }
+    function waitFor(i) { return looksAhead(i) ? i + 1 : i; }
+
+    /** 有几个音支持调偏移 K（这个音过了起音余量的有声帧里，过半与 K 差 ≤ 半个半音） */
+    function support(K) {
+      var s = silence();
+      var agree = {};
+      var all = {};
+      for (var i = 0; i < frames.length; i += 1) {
+        var f = frames[i];
+        if (!isVoiced(f, s)) continue;
+        var tt = f.t - l;
+        var ni = noteIndexAt(notes, tt);
+        if (ni < 0 || tt < notes[ni].startMs + CFG.ONSET_GRACE_MS) continue;
+        all[ni] = (all[ni] || 0) + 1;
+        if (Math.abs(fold(f.midi - notes[ni].midi - K)) <= 0.5) agree[ni] = (agree[ni] || 0) + 1;
+      }
+      var n = 0;
+      for (var key in all) if (Object.prototype.hasOwnProperty.call(all, key) && (agree[key] || 0) * 2 >= all[key]) n += 1;
+      return n;
+    }
+
     function judgeNext() {
       var i = judged.length;
-      var est = estimate(notes, frames, { keyFree: keyFree, kInit: k, lInit: l, silence: silence(), upto: i });
-      if (est.hits > 0) { k = est.k; l = est.l; }
+      // 留一法：K 不用这个音自己的帧
+      var ahead = looksAhead(i);
+      var est = estimate(notes, frames, {
+        keyFree: keyFree, kInit: k0, kWeight: kW, lInit: l, silence: silence(),
+        upto: ahead ? i + 1 : i - 1,
+        skip: ahead ? i : -1
+      });
+      if (est.voiced > 0) l = est.l;
+      k = est.hits > 0 ? est.k : k0;
       var r = noteAccuracy(notes[i], frames, l, k, silence());
       var tier = tierOf(r.a);
       // 一个音一点声都没有、且这句到目前几乎都没出声 → 不给档位（「quiet」），
@@ -245,7 +302,7 @@
       poll: function (t) {
         var out = [];
         while (judged.length < notes.length) {
-          var n = notes[judged.length];
+          var n = notes[waitFor(judged.length)];
           if (t < n.startMs + n.durMs + l + CFG.JUDGE_DELAY_MS) break;
           out.push(judgeNext());
         }
@@ -259,6 +316,9 @@
         var silent = ratio < CFG.SILENT_RATIO;
         var sum = 0;
         for (var i = 0; i < judged.length; i += 1) sum += judged[i].a;
+        // 整句的调：所有音一起估；kSupport = 有多少帧支持它（下一句的先验权重据此定）
+        var whole = estimate(notes, frames, { keyFree: keyFree, kInit: k0, kWeight: kW, lInit: l, silence: silence() });
+        var kAll = whole.hits > 0 ? whole.k : k0;
         return {
           notes: judged.slice(),
           newly: newly,
@@ -266,7 +326,8 @@
           voicedRatio: ratio,
           silent: silent,
           peak: peak,
-          k: k,
+          k: kAll,
+          kSupport: support(kAll),
           l: l
         };
       },
@@ -337,6 +398,13 @@
 
   function config() { return JSON.parse(JSON.stringify(CFG)); }
 
+  /** 由上一句的 kSupport（支持这个调的音数）算下一句调先验的权重 */
+  function priorWeight(kSupport) {
+    if (kSupport >= 3) return CFG.K_PRIOR_MAX;
+    if (kSupport >= 1) return CFG.K_PRIOR_MIN;
+    return CFG.K_PRIOR_FIRST;
+  }
+
   Siren.Judge = {
     create: create,
     createTap: createTap,
@@ -346,6 +414,7 @@
     credit: credit,
     fold: fold,
     silenceLevel: silenceLevel,
+    priorWeight: priorWeight,
     config: config
   };
 })(typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {}));

@@ -20,6 +20,8 @@
     clock: 0,
     modal: null,          // { draw(t), ... } 画在最上层
     trans: 1,
+    nav: 0,               // 每切一次屏幕 +1：异步回来的结果（麦克风授权）据此判断玩家是不是已经走开了
+    deniedToast: false,
     dev: /[?&]dev=1/.test(global.location ? global.location.search : '')
   };
   Siren.App = App;
@@ -37,14 +39,16 @@
     snapCtx.clearRect(0, 0, snap.width, snap.height);
     snapCtx.drawImage(Gfx.main, 0, 0);
     App.trans = 0;
+    App.nav += 1;
     var prev = App.name;
     App.name = name;
     App.params = params || {};
     App.modal = null;
     Gfx.parts.length = 0;
-    // 离开唱歌相关的屏幕：停掉一切声音；回到首页 / 设置 / 图鉴时释放麦克风
-    if ((prev === 'play' || prev === 'hum') && name !== 'play' && name !== 'hum') Session.abort();
-    if (name === 'title' || name === 'settings' || name === 'codex') Session.releaseMic();
+    // 离开唱歌相关的屏幕：停掉一切声音、释放麦克风（§2：手机上的麦克风指示灯要灭）
+    var singing = name === 'play' || name === 'hum';
+    if ((prev === 'play' || prev === 'hum') && !singing) Session.abort();
+    if (!singing) Session.releaseMic();
     scr.enter(App.params, prev);
     guardHistory();
   };
@@ -55,10 +59,18 @@
     return Siren.capabilities.getUserMedia && Session.micState() === 'unknown';
   }
 
-  /** 拿麦克风（必须在点击里调用），拿不到就进点按模式 */
+  /**
+   * 拿麦克风（必须在点击里调用），拿不到就进点按模式。
+   * 等授权的时候玩家可能已经走开了（返回、去了设置）：那就放掉麦克风，不再往下走。
+   */
   function withMic(then) {
+    var nav = App.nav;
     Session.requestMic().then(function (ok) {
-      if (!ok) UI.toast(UI.t('micDenied'), 3.5);
+      if (App.nav !== nav || App.modal) {
+        if (App.name !== 'play' && App.name !== 'hum') Session.releaseMic();
+        return;
+      }
+      if (!ok && !App.deniedToast) { App.deniedToast = true; UI.toast(UI.t('micDenied'), 3.5); }
       then(ok);
     });
   }
@@ -90,8 +102,9 @@
 
   /** 第一次唱之前：要麦克风 → 哼一声试试 → 开始 */
   function beforeSinging(start) {
+    var from = App.name;
     function afterMic(ok) {
-      if (ok && !Progress.onboarded()) App.go('hum', { next: start });
+      if (ok && !Progress.onboarded()) App.go('hum', { next: start, from: from });
       else start();
     }
     if (needMicCard()) showMicCard(afterMic);
@@ -120,6 +133,7 @@
   }
   global.addEventListener('popstate', function () {
     guarded = false;
+    if (App.modal) { App.modal = null; guardHistory(); return; }   // 先关掉弹出的卡片
     if (App.name === 'title') return;
     if (!UI.back()) App.go('title');
     guardHistory();
@@ -131,7 +145,10 @@
     if (doc.hidden) {
       var scr = Siren.Screens[App.name];
       if (scr && scr.onHide) scr.onHide();
+      Audio.hold();          // 海浪、音效一起停；回来再响
+      return;
     }
+    if (unlocked) Audio.wake();
   });
 
   // ---------------------------------------------------------------- 第一次点击：解锁声音

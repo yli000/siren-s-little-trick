@@ -113,6 +113,59 @@ console.log('v2 流程');
   check('退出后不再有任何事件', events.length === n1);
 }
 
+// ---------------------------------------------------------------- 3b. 在「结果」停留时暂停（QA 第 1 条）
+async function untilPhase(S, clock, pred, maxMs = 200000) {
+  for (let t = 0; t < maxMs; t += 25) {
+    if (pred(S.Session.getState())) return true;
+    await clock.advance(25);
+  }
+  return false;
+}
+{
+  const { S, clock, events } = await world();
+  S.Session._setMicStub(singer(S));
+  S.Session.startPractice('steps');
+  await untilPhase(S, clock, (st) => st.phase === 'result' && st.phraseIdx === st.phraseCount - 1);
+  S.Session.pause();
+  await clock.advance(3000);
+  let err = null;
+  try { S.Session.resume(); await clock.advance(200); } catch (e) { err = e; }
+  const fin = events.find((e) => e.type === 'finish');
+  check('练习最后一步判完时暂停 → 继续：直接做完，不报错', !err && !!fin && fin.p.exercise === 'steps', err ? String(err) : '');
+}
+{
+  const { S, clock, events } = await world();
+  S.Session._setMicStub(singer(S));
+  const song = S.SONGS.find((s) => s.id === 'mary');
+  S.Session.startSong(song);
+  await untilPhase(S, clock, (st) => st.phase === 'result' && st.phraseIdx === 0);
+  S.Session.pause();
+  const frozen = S.Session.getState().phaseT;
+  await clock.advance(1500);
+  check('暂停时画面停住（phaseT 不走）', S.Session.getState().phaseT === frozen);
+  S.Session.resume();
+  await clock.advance(100);
+  const st = S.Session.getState();
+  check('唱歌：结果停留时暂停 → 继续：进入下一句，不重唱判完的这句', st.phase === 'listen' && st.phraseIdx === 1, `${st.phase} #${st.phraseIdx}`);
+  await clock.advance(150000);
+  const fin = events.find((e) => e.type === 'finish');
+  check('（同上）每句只记一次结果', fin && fin.p.results.length === song.phrases.length, fin ? `${fin.p.results.length}/${song.phrases.length}` : 'no finish');
+}
+
+// ---------------------------------------------------------------- 3c. 一直哼同一个音（QA 第 4 条）
+{
+  const { S, clock, events } = await world();
+  S.Session._setMicStub(() => {
+    const st = S.Session.getState();
+    return st.phase === 'sing' ? { hz: S.Pitch.midiToHz(64), rms: 0.2 } : { hz: 0, rms: 0.001 };
+  });
+  S.Session.startSong(S.SONGS.find((s) => s.id === 'twinkle'));
+  await clock.advance(150000);
+  const notes = events.filter((e) => e.type === 'note');
+  const perfect = notes.filter((e) => e.p.tier === 'perfect').length;
+  check('一直哼同一个音唱完小星星：Perfect 不超过三成', notes.length > 30 && perfect <= notes.length * 0.3, `${perfect}/${notes.length}`);
+}
+
 // ---------------------------------------------------------------- 4. 练习
 {
   const { S, clock, events } = await world();
@@ -123,6 +176,9 @@ console.log('v2 流程');
   check('练习「找到第一个音」：做完', fin && fin.p.exercise === 'find');
   check('测到舒服的音高并存下', S.Progress.range() && Math.round(S.Progress.range().comfort) === 58, JSON.stringify(S.Progress.range()));
   check('练习完成打勾', S.Progress.practiceDone('find'));
+
+  check('第 1 组测到了音：说「她记住你的调了」', fin && fin.p.learnedRange === true);
+  check('第 1 组之后唱歌就按你的调', S.Progress.keyKnown() && S.Progress.songShift(S.SONGS[0]) !== 0, `twinkle 移 ${S.Progress.songShift(S.SONGS[0])}`);
 
   events.length = 0;
   S.Session.startPractice('ladder');
@@ -140,6 +196,28 @@ console.log('v2 流程');
   await clock.advance(200000);
   const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
   check('一步最多 3 遍，之后放行', !!events.find((e) => e.type === 'finish') && listens <= 9, `${listens} 遍`);
+}
+
+// ---------------------------------------------------------------- 5b. 练习：完全不出声（QA 建议）
+{
+  const { S, clock, events } = await world();
+  S.Session._setMicStub(singer(S, { quietPhrase: () => true }));
+  S.Session.startPractice('steps');
+  await clock.advance(200000);
+  const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
+  check('练习里不出声：每步最多听 3 遍，然后做完', !!events.find((e) => e.type === 'finish') && listens <= 9, `${listens} 遍`);
+}
+
+// ---------------------------------------------------------------- 5c. 「她记住你的调了」只在真的测到时出现（QA 第 5 条）
+{
+  const { S, clock, events } = await world();
+  S.Progress.setRange({ comfort: 60 });   // 第一次玩时「哼一声」测到的
+  S.Session._setMicStub(singer(S));
+  S.Session.startPractice('leaps');
+  await clock.advance(120000);
+  const fin = events.find((e) => e.type === 'finish');
+  check('跳过去：不说「她记住你的调了」', fin && fin.p.learnedRange === false);
+  check('只有第一次的「哼一声」：唱歌不移调', !S.Progress.keyKnown() && S.Progress.songShift(S.SONGS[0]) === 0);
 }
 
 // ---------------------------------------------------------------- 6. 没有麦克风：点按

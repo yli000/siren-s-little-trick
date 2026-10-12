@@ -41,7 +41,7 @@
 
       settingsTitle: '设置', sfx: '音效与海浪', on: '开', off: '关',
       language: '语言', langName: '中文',
-      mic: '麦克风', micOk: '已允许', micNo: '未允许，点这里再试', micUnknown: '还没用过',
+      mic: '麦克风', micOk: '已允许', micNo: '未允许，点此重试', micUnknown: '还没用过',
       changelog: '更新日志', about: '关于', reset: '清除进度',
       resetConfirm: '图鉴、唱过的歌和练习记录都会清空', confirm: '清空', cancel: '取消', resetDone: '已清空',
 
@@ -63,7 +63,7 @@
       micTitle: 'She wants to hear you', micBody: 'Your voice stays on your phone. Nothing is uploaded.', ok: 'OK',
       micDenied: 'No mic? Tap the mic to the beat on your turn.',
 
-      humTitle: 'Hum a note', humHint: 'Any note that feels easy', humHeard: 'She heard you', humNot: "Didn't catch that. Hum again?",
+      humTitle: 'Hum a note', humHint: 'Any note that feels easy', humHeard: 'She heard you', humNot: "Didn't hear it. Hum again?",
       tryAgain: 'Try again', go: "Let's sing", skip: 'Skip',
 
       newFind: 'New!', visitN: 'Visit #{n}', singAgain: 'Sing again', another: 'Another',
@@ -72,7 +72,7 @@
       codexTitle: 'Ships', notYet: "It hasn't come yet.", notYet2: 'Sing a few more. Maybe tonight.', visits: '{n} visits',
 
       practiceTitle: 'Practice',
-      ex_find: 'Find the note', exb_find: 'Hum, then match her note',
+      ex_find: 'Find the note', exb_find: 'Hum, then match her',
       ex_steps: 'Step by step', exb_steps: 'One note to the next',
       ex_leaps: 'Leaps', exb_leaps: 'Reach across the gap',
       ex_ladder: 'Ladder', exb_ladder: 'Step up, step down',
@@ -81,7 +81,7 @@
 
       settingsTitle: 'Settings', sfx: 'Effects & waves', on: 'On', off: 'Off',
       language: 'Language', langName: 'English',
-      mic: 'Microphone', micOk: 'Allowed', micNo: 'Not allowed. Tap to retry', micUnknown: 'Not used yet',
+      mic: 'Microphone', micOk: 'Allowed', micNo: 'Denied. Retry', micUnknown: 'Not used yet',
       changelog: "What's new", about: 'About', reset: 'Reset progress',
       resetConfirm: 'Your ships, songs and practice will be cleared', confirm: 'Clear', cancel: 'Cancel', resetDone: 'Cleared',
 

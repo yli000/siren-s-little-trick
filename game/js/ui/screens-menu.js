@@ -36,20 +36,22 @@
         }
       });
 
-      // 标题：中文一行逐字起伏，英文两行
+      // 标题：中文一行逐字起伏，英文两行（行距收紧，副标题不压到她的头发：发顶约在 sirenY + 12）
       var title = t_('title');
-      var lines = Progress.lang() === 'en' ? ["Siren's", 'Little Trick'] : [title];
-      var y0 = Progress.lang() === 'en' ? 8 : 30;
+      var en = Progress.lang() === 'en';
+      var lines = en ? ["Siren's", 'Little Trick'] : [title];
+      var lh = en ? 23 : 28;
+      var y0 = en ? Math.max(2, Math.min(8, L.sirenY + 12 - 14 - 2 * lh - 2)) : 30;
       for (var li = 0; li < lines.length; li += 1) {
         var s = lines[li];
         var x = Math.round((W - Gfx.tw(s, 2)) / 2);
         for (var i = 0; i < s.length; i += 1) {
           var bob = Gfx.reduceMotion ? 0 : Math.round(1.6 * Math.sin(t * 2.2 - (i + li * 3) * 0.7));
-          Gfx.text(g, s[i], x, y0 + li * 28 + bob, { c: C.CREAM, s: 2, o: C.INK, sh: C.INK });
+          Gfx.text(g, s[i], x, y0 + li * lh + bob, { c: C.CREAM, s: 2, o: C.INK, sh: C.INK });
           x += Gfx.tw(s[i], 2);
         }
       }
-      var ty = y0 + lines.length * 28 + 4;
+      var ty = y0 + lines.length * lh + (en ? 2 : 4);
       var tl = Gfx.wrap(t_('tagline'), W - 24);
       for (var tli = 0; tli < tl.length; tli += 1) Gfx.text(g, tl[tli], W / 2, ty + tli * 14, { c: '#fff6ec', a: 'c', o: C.INK });
       if (Math.floor(t * 1.2) % 3 === 0 && Math.random() < 0.3) Gfx.emit({ k: 'spark', x: 14 + Math.random() * 150, y: 24 + Math.random() * 40, life: 0.5, c: '#fff6d0' });
@@ -156,11 +158,12 @@
             var gg = Gfx.ctx();
             Gfx.text(gg, Gfx.fit(UI.L(song.title), 112), x + 8, y2 + 5, { c: C.CREAM });
             UI.levelDots(x + 9, y2 + 27, song.level);
-            contour(song, x + 34, y2 + 23, 70, 10);
+            // 第一次来：小星星的走向线换成「从这首开始」（放在卡片里，不压别的东西）
+            if (highlight) UI.pill(x + 32, y2 + 22, t_('startHere'), C.GOLD, C.INK);
+            else contour(song, x + 34, y2 + 23, 70, 10);
             if (Progress.songInfo(song.id).plays > 0) Gfx.sprT(gg, 'i_check', x + 106, y2 + 26, C.GOLD);
             regularSlot(song, x + 122, y2 + 5);
           }, highlight ? { line: C.GOLD } : null);
-          if (highlight) UI.pill(110, yy - 6, t_('startHere'), C.GOLD, C.INK);
         })(songs[i], top + 2 + (i + 1) * rowH - off);
       }
       g.restore();
@@ -168,7 +171,7 @@
 
       // 顶栏画在列表上面
       UI.topBar(null, function () { App().go('title'); });
-      if (Progress.hasRange() || Math.abs(Progress.prefShift()) >= 1) UI.pill(W - 8 - (Gfx.tw(t_('yourKey')) + 10), 10, t_('yourKey'), C.TEAL, C.INK);
+      if (Progress.keyKnown()) UI.pill(W - 8 - (Gfx.tw(t_('yourKey')) + 10), 10, t_('yourKey'), C.TEAL, C.INK);
     },
     back: function () { App().go('title'); }
   };
@@ -282,7 +285,7 @@
           });
         })(list[i], top + i * (ch + 6));
       }
-      if (Progress.hasRange()) UI.pill(W - 8 - (Gfx.tw(t_('yourKey')) + 10), 10, t_('yourKey'), C.TEAL, C.INK);
+      if (Progress.keyKnown()) UI.pill(W - 8 - (Gfx.tw(t_('yourKey')) + 10), 10, t_('yourKey'), C.TEAL, C.INK);
     },
     back: function () { App().go('title'); }
   };
@@ -296,7 +299,7 @@
       var g = Gfx.ctx();
       Gfx.text(g, label, x + 9, yy + 8, { c: C.CREAM });
       if (value === '>') Gfx.sprT(g, 'i_next', x + 150, yy + 11, '#b9c4ff');
-      else if (value) Gfx.text(g, Gfx.fit(value, 84), x + 156, yy + 8, { c: '#b9c4ff', a: 'r' });
+      else if (value) Gfx.text(g, Gfx.fit(value, 156 - 9 - Gfx.tw(label) - 10), x + 156, yy + 8, { c: '#b9c4ff', a: 'r' });
     });
   }
 

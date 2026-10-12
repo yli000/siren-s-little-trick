@@ -109,6 +109,9 @@
    * @param {number} pref        玩家偏好的整体移调（半音，唱歌时被动学到的），没有则 0
    * @returns {number} 移调半音数，限制在 ±6
    */
+  var SHIFT_TOP = 79;
+  var SHIFT_BOTTOM = 45;
+
   function fitShift(song, range, pref) {
     var r = songRange(song);
     var s;
@@ -117,6 +120,9 @@
     } else {
       s = Math.round(pref || 0);
     }
+    // 她最高唱到 G5（音高检测上限约 820Hz，见 pitch.js HZ_MAX），最低不低于 A2
+    s = Math.min(s, SHIFT_TOP - r.hi);
+    s = Math.max(s, SHIFT_BOTTOM - r.lo);
     return Math.max(-6, Math.min(6, s));
   }
 

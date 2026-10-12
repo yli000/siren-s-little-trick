@@ -138,10 +138,23 @@
   }
   function prefShift() { return Store.getNumber(K.PREF_SHIFT, 0); }
 
+  /**
+   * 定调用的音区：第 4 组测出的最高 / 最低优先；否则用第 1 组哼出的舒服音高
+   * （舒服的音一般在自己音区偏下，往下留 4 个、往上留 8 个半音）。都没有返回 null。
+   * 第一次玩时「哼一声试试」测到的音不算——那只是随便哼一下（§4：第 1、4 组）。
+   */
+  function keyRange() {
+    var r = range();
+    if (hasRange()) return r;
+    if (r && r.fromFind && r.comfort > 0) return { lo: r.comfort - 4, hi: r.comfort + 8 };
+    return null;
+  }
+  /** 唱歌会不会按玩家的调来（界面上的「按你的调」） */
+  function keyKnown() { return !!keyRange() || Math.abs(prefShift()) >= 1; }
+
   /** 这首歌对这个玩家移几个半音 */
   function songShift(song) {
-    var r = range();
-    return Siren.Music.fitShift(song, hasRange() ? r : null, prefShift());
+    return Siren.Music.fitShift(song, keyRange(), prefShift());
   }
 
   /**
@@ -150,7 +163,7 @@
    * @param {Array<number>} ks  各句估出的调偏移 K（玩家相对她唱高 / 低多少）
    */
   function learnShift(usedShift, ks) {
-    if (hasRange() || !ks.length) return prefShift();
+    if (keyRange() || !ks.length) return prefShift();
     var sorted = ks.slice().sort(function (a, b) { return a - b; });
     var med = sorted[Math.floor(sorted.length / 2)];
     if (Math.abs(med) < 1) return prefShift();
@@ -188,7 +201,7 @@
     pickShip: pickShip, recordArrival: recordArrival,
     songById: songById, songInfo: songInfo, lastSong: lastSong, setLastSong: setLastSong, anySongPlayed: anySongPlayed,
     practiceDone: practiceDone, markPractice: markPractice,
-    range: range, setRange: setRange, hasRange: hasRange, prefShift: prefShift, songShift: songShift, learnShift: learnShift,
+    range: range, setRange: setRange, hasRange: hasRange, keyRange: keyRange, keyKnown: keyKnown, prefShift: prefShift, songShift: songShift, learnShift: learnShift,
     latency: latency, setLatency: setLatency,
     lang: lang, setLang: setLang, sfxOff: sfxOff, setSfxOff: setSfxOff, onboarded: onboarded, setOnboarded: setOnboarded,
     reset: reset,
