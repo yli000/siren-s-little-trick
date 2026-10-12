@@ -579,7 +579,10 @@
     S.resuming = true;
     var ready = mic.state === 'granted' && !micReady() ? requestMic() : Promise.resolve(true);
     ready.then(function () {
-      if (S !== mine || !S.paused) return;
+      if (S !== mine || !S.paused) {
+        if (!S) releaseMic();   // 等麦克风时已经退出了：别把刚打开的麦克风留着
+        return;
+      }
       S.resuming = false;
       S.paused = false;
       Audio.ensureAudio();
@@ -600,11 +603,20 @@
     });
   }
 
+  /** 重新开始这一首 / 这一组。⚠️ 要在点击里调用：暂停时麦克风已释放，这里重新拿 */
   function restart() {
     if (!S) return;
-    if (S.kind === 'song') startSong(S.song);
-    else if (S.kind === 'practice') startPractice(S.exercise);
-    else startHum();
+    var mine = S;
+    var ready = mic.state === 'granted' && !micReady() ? requestMic() : Promise.resolve(true);
+    ready.then(function () {
+      if (S !== mine) {
+        if (!S) releaseMic();
+        return;
+      }
+      if (S.kind === 'song') startSong(S.song);
+      else if (S.kind === 'practice') startPractice(S.exercise);
+      else startHum();
+    });
   }
 
   /** 退出这一轮：停掉所有声音、定时器与采样（麦克风保留，离开唱歌界面时由前端 releaseMic） */

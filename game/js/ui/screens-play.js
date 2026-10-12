@@ -391,7 +391,7 @@
       H.result = null;
       Session.startHum();
     },
-    onHide: function () { Session.abort(); H.result = 'not'; },
+    onHide: function () { Session.abort(); Session.releaseMic(); H.result = 'not'; },
     draw: function (t) {
       var g = Gfx.ctx();
       var W = Gfx.W();
@@ -416,7 +416,11 @@
       if (heard) {
         UI.btn('humgo', 30, py + 18, W - 60, 26, t_('go'), function () { Progress.setOnboarded(); H.next(); }, { primary: true, locked: locked });
       } else {
-        UI.btn('humagain', 16, py + 18, 72, 26, t_('tryAgain'), function () { H.result = null; Session.startHum(); }, { primary: true, locked: locked });
+        UI.btn('humagain', 16, py + 18, 72, 26, t_('tryAgain'), function () {
+          H.result = null;
+          // 切过后台时麦克风已释放：先拿回来（这一下就是手势）
+          Session.requestMic().then(function () { if (App().name === 'hum') Session.startHum(); });
+        }, { primary: true, locked: locked });
         UI.btn('humskip', 92, py + 18, 72, 26, t_('skip'), function () { Progress.setOnboarded(); H.next(); }, { locked: locked });
       }
     },

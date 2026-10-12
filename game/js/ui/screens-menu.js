@@ -40,7 +40,7 @@
       var title = t_('title');
       var en = Progress.lang() === 'en';
       var lines = en ? ["Siren's", 'Little Trick'] : [title];
-      var lh = en ? 23 : 28;
+      var lh = en ? 24 : 28;
       var y0 = en ? Math.max(2, Math.min(8, L.sirenY + 12 - 14 - 2 * lh - 2)) : 30;
       for (var li = 0; li < lines.length; li += 1) {
         var s = lines[li];

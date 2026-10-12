@@ -190,6 +190,19 @@ async def run(args):
         R.check("退出：回到选歌，没有残留的歌声", await page.evaluate("__siren.name === 'select' && Siren.Audio.voiceCount() === 0 && Siren.Session.getState().phase === 'idle'"))
         R.check("退出：麦克风已释放", await page.evaluate("__micLive()") == 0)
 
+        # 暂停 → 重新开始：重新拿麦克风，不会掉进点按模式
+        await page.evaluate("__siren.startSong(Siren.SONGS[1])")
+        await wait_for(page, "Siren.Session.getState().phase === 'listen'", 5000)
+        await page.evaluate("Siren.Session.pause()")
+        await page.wait_for_timeout(100)
+        await tap(page, 90, (H - 128) // 2 + 62 + 12)   # 重新开始
+        await wait_for(page, "Siren.Session.getState().phase === 'sing'", 15000)
+        R.check("暂停 → 重新开始：麦克风回来了，不是点按模式",
+                await page.evaluate("!Siren.Session.getState().tap && __micLive() === 1"),
+                await page.evaluate("JSON.stringify([Siren.Session.getState().tap, __micLive()])"))
+        await page.evaluate("__siren.go('select')")
+        await page.wait_for_timeout(200)
+
         # 切后台：自动暂停，整个音频挂起；回来再恢复
         await page.evaluate("__siren.startSong(Siren.SONGS[1])")
         await wait_for(page, "Siren.Session.getState().phase === 'listen'", 5000)
