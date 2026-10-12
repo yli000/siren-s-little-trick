@@ -1,421 +1,246 @@
 #!/usr/bin/env python3
-"""Browser acceptance checks for the real Siren UI (development only).
+"""v2 浏览器端到端测试（开发用，不进包）。
 
-Run the server first: node tools/serve.mjs 4173
-Then: python tools/test-ui.py --screenshots
+    python3 tools/test-ui.py              # Chromium，结果打印到终端
+    python3 tools/test-ui.py --shots out  # 另存截图
 
-Uses two independent, fresh browser contexts. The denied route exercises the
-actual browser rejection and five rhythm phrases. The synthetic microphone
-route supplies an actual Web Audio MediaStream, follows the published melody
-events, and leaves one phrase silent. No internal game functions are invoked.
-Runs on Chromium and WebKit. WebKit is not optional decoration: every visual defect found on
-a real iPad so far was a CSS feature falling back differently there (mask-mode ignored so an
-opaque luminance mask masked nothing; container queries absent so cqw resolved against the
-viewport). Chromium alone cannot see any of that. A real phone and human microphone are still
-needed on top.
+做法：用一个假的 getUserMedia 返回 Web Audio 振荡器的声音流，页面里有一个"假歌手"
+每 10ms 读一次 Siren.Session.getState()，按当前该唱的音设振荡器频率——
+于是整条链路（麦克风 → YIN → 逐帧判定 → 画面）都是真的在跑，只有"人"是假的。
+
+覆盖：第一次进入（要麦克风 → 哼一声 → 唱完一首 → 出船 → 存档）、暂停 / 继续 / 退出后没有声音、
+练习、换语言、清除进度、拒绝麦克风时的点按模式、三种屏幕尺寸的版面。
+需要：Python 3 + Playwright（Chromium）。
 """
-
 import argparse
 import asyncio
+import functools
+import http.server
 import json
 import os
-import re
-import time
-from pathlib import Path
-from urllib.parse import urlparse
+import socketserver
+import sys
+import threading
 
-from playwright.async_api import TimeoutError as PlaywrightTimeout, async_playwright
+from playwright.async_api import async_playwright
 
-
-VIEWPORTS = [("desktop", 1440, 900), ("landscape", 844, 390), ("portrait", 390, 844)]
-EVENTS = ["state:change", "melody:phraseStart", "attempt:countdown", "attempt:start",
-          "attempt:end", "attempt:note", "ship:in", "ship:wrecked", "phrase:result", "game:finale",
-          "player:replay", "melody:replay", "notice", "error"]
-TIERS = {"perfect", "great", "good", "miss"}
-FORBIDDEN_COPY = ["共鸣度", "评级", "金句", "你跑调了", "再大声一点", "别害羞"]
-ACTION_LABELS = {
-    "start": re.compile("让她开口"),
-    "replay": re.compile("重听"),
-    "share": re.compile("分享|生成.*卡|留下.*卡|海上.*明信片|纪念"),
-    "restart": re.compile("再来一局"),
-    "abort": re.compile("回到首页|返回首页|离开|回到海岸"),
-}
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "game"))
 
 MIC_SCRIPT = """(() => {
-  window.__qaMicrophone = null;
+  window.__qa = { semis: 0, latency: 90, silentPhrase: -1, humMidi: 60, on: true };
   if (!navigator.mediaDevices) return;
-  Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {value: async () => {
-    const context = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const destination = context.createMediaStreamDestination();
-    oscillator.type = 'sine'; gain.gain.value = 0;
-    oscillator.connect(gain); gain.connect(destination); oscillator.start();
-    await context.resume();
-    window.__qaMicrophone = {context, oscillator, gain, destination};
-    return destination.stream;
+  Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const dest = ctx.createMediaStreamDestination();
+    osc.type = 'triangle'; gain.gain.value = 0;
+    osc.connect(gain); gain.connect(dest); osc.start();
+    await ctx.resume();
+    const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+    setInterval(() => {
+      const qa = window.__qa;
+      if (!window.Siren || !Siren.Session || !qa.on) { gain.gain.value = 0; return; }
+      const st = Siren.Session.getState();
+      let midi = 0;
+      if (st.phase === 'hum') midi = qa.humMidi;
+      else if ((st.phase === 'sing' || st.phase === 'countin') && st.phraseIdx !== qa.silentPhrase) {
+        const t = st.singT - qa.latency;
+        for (const n of st.notes || []) if (t >= n.startMs && t < n.startMs + n.durMs - 40) midi = n.midi + qa.semis;
+      }
+      if (midi) { osc.frequency.setValueAtTime(hz(midi), ctx.currentTime); gain.gain.setTargetAtTime(0.3, ctx.currentTime, 0.005); }
+      else gain.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
+    }, 10);
+    return dest.stream;
   }});
 })();"""
 
-OBSERVE_SCRIPT = """({events, synthetic}) => {
-  const qa = window.__uiQA = {events: [], notes: [], voiced: 0, unvoiced: 0,
-    countdowns: [], tapDue: [], starts: [], silence: [], snapshots: [], tieredNotes: 0};
-  events.forEach(type => Siren.on(type, payload => {
-    const now = performance.now();
-    // Record the phase at emit time: the tutorial's demonstration ships must not count toward the run.
-    qa.events.push({type, payload, at: now, phase: Siren.getState().phase});
-    if (type === 'attempt:note') setTimeout(() => {
-      qa.tieredNotes = Math.max(qa.tieredNotes, document.querySelectorAll('.note[data-tier]').length);
-    }, 0);
-    if (type === 'melody:phraseStart') qa.notes = payload.notes;
-    if (type === 'attempt:countdown') qa.countdowns.push(payload.from);
-    if (type === 'attempt:end' && payload.reason === 'silence') qa.silence.push(Siren.getState().phraseIndex);
-    if (type === 'attempt:start') {
-      qa.starts.push(payload.phraseIndex);
-      if (Siren.getState().phase === 'RHYTHM_FALLBACK') {
-        qa.tapDue = qa.notes.map(note => now + 500 + note.startMs);
-      }
-      if (synthetic && window.__qaMicrophone && payload.phraseIndex !== 2) {
-        const {context, oscillator, gain} = window.__qaMicrophone;
-        const base = context.currentTime + .065;
-        gain.gain.cancelScheduledValues(context.currentTime);
-        gain.gain.setValueAtTime(0, context.currentTime);
-        qa.notes.forEach(note => {
-          const at = base + note.startMs / 1000;
-          oscillator.frequency.setValueAtTime(440 * Math.pow(2, (note.midi - 69) / 12), at);
-          gain.gain.setValueAtTime(.24, at);
-          gain.gain.setValueAtTime(0, at + note.durationMs / 1000 * .86);
-        });
-      }
-    }
-  }));
-  Siren.on('attempt:pitch', payload => { if (payload.voiced) qa.voiced++; else qa.unvoiced++; });
-}"""
+DENY_SCRIPT = """(() => {
+  if (!navigator.mediaDevices) return;
+  Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { throw new DOMException('denied', 'NotAllowedError'); } });
+})();"""
 
-LAYOUT_SCRIPT = """() => {
-  const visible = element => {
-    const style = getComputedStyle(element), box = element.getBoundingClientRect();
-    return box.width > 0 && box.height > 0 && style.visibility !== 'hidden' &&
-      style.display !== 'none' && element.checkVisibility({checkOpacity: true, checkVisibilityCSS: true});
-  };
-  const controls = [...document.querySelectorAll('button, [role="button"]')].filter(visible).map(el => {
-    const box = el.getBoundingClientRect();
-    return {text: (el.innerText || el.getAttribute('aria-label') || '').trim(),
-      action: el.dataset.action, x: box.x, y: box.y, width: box.width, height: box.height,
-      clipped: box.left < -1 || box.top < -1 || box.right > innerWidth + 1 || box.bottom > innerHeight + 1,
-      disabled: !!el.disabled};
-  });
-  const brokenImages = [...document.images].filter(el => !el.complete || el.naturalWidth === 0).map(el => el.src);
-  const counters = [...document.querySelectorAll('#ship-number, #phrase-number, #result-number, #share-number')]
-    .filter(visible).map(el => ({id: el.id, text: el.textContent.trim()}));
-  return {width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth,
-    scrollHeight: document.documentElement.scrollHeight, text: document.body.innerText,
-    controls, counters, brokenImages, state: Siren.getState()};
+HOOK = """() => {
+  window.__events = [];
+  ['note', 'finish', 'phase', 'pause', 'notice'].forEach((t) => Siren.Session.on(t, (p) => window.__events.push({ t, p })));
 }"""
 
 
-async def click_action(page, name, required=True):
-    # An optional control can go away between the visibility check and the click: replay is
-    # only live during LISTEN. Treat that race as "not clicked" so the caller can retry on the
-    # next phrase, instead of failing a run for a timing artifact of the harness.
-    async def attempt(locator):
-        if not await locator.count():
-            return False
-        try:
-            await locator.first.click(timeout=2500)
-        except PlaywrightTimeout:
-            if required:
-                raise
-            return False
-        return True
+class Report:
+    def __init__(self):
+        self.passed = 0
+        self.failed = []
 
-    if await attempt(page.locator('[data-action="' + name + '"]').filter(visible=True)):
-        return True
-    label = ACTION_LABELS.get(name)
-    if label and await attempt(page.get_by_role("button", name=label).filter(visible=True)):
-        return True
-    if required:
-        raise AssertionError("No visible action: " + name)
+    def check(self, name, ok, detail=""):
+        print(("  OK   " if ok else "  FAIL ") + name + (("  — " + str(detail)) if detail != "" else ""))
+        if ok:
+            self.passed += 1
+        else:
+            self.failed.append(name)
+
+
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+
+def serve():
+    handler = functools.partial(QuietHandler, directory=ROOT)
+    httpd = socketserver.TCPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, httpd.server_address[1]
+
+
+async def tap(page, x, y):
+    """按逻辑坐标（180 宽）点画布"""
+    box = await page.evaluate("(() => { const r = document.getElementById('screen').getBoundingClientRect(); return [r.left, r.top, r.width, r.height, Siren.Gfx.H()]; })()")
+    await page.mouse.click(box[0] + x / 180 * box[2], box[1] + y / box[4] * box[3])
+
+
+async def wait_for(page, expr, timeout_ms, step=100):
+    waited = 0
+    while waited < timeout_ms:
+        if await page.evaluate(expr):
+            return True
+        await page.wait_for_timeout(step)
+        waited += step
     return False
 
 
-async def snapshot(page, report, output, name, screenshots):
-    await page.wait_for_timeout(120)
-    data = await page.evaluate(LAYOUT_SCRIPT)
-    data["name"] = name
-    report["layouts"].append(data)
-    if data["scrollWidth"] > data["width"] + 1:
-        report["failures"].append(name + ": horizontal document overflow")
-    if data["brokenImages"]:
-        report["failures"].append(name + ": broken images " + str(data["brokenImages"]))
-    if len(data["counters"]) > 1:
-        report["failures"].append(name + ": multiple simultaneous boat counters " + str(data["counters"]))
-    for counter in data["counters"]:
-        if counter["id"] in ("result-number", "share-number") and counter["text"] != str(data["state"]["shipsWrecked"]):
-            report["failures"].append(name + ": result/share boat count differs from backend")
-    for control in data["controls"]:
-        if control["clipped"]:
-            report["failures"].append(name + ": clipped control " + control["text"])
-    for phrase in FORBIDDEN_COPY:
-        if phrase in data["text"]:
-            report["failures"].append(name + ": forbidden evaluation copy " + phrase)
-    if screenshots:
-        await page.screenshot(path=str(output / (name + ".png")), animations="disabled")
+async def run(args):
+    R = Report()
+    httpd, port = serve()
+    url = "http://127.0.0.1:%d/index.html?dev=1" % port
+    shots = args.shots
+    if shots:
+        os.makedirs(shots, exist_ok=True)
 
+    async def shot(page, name):
+        if shots:
+            await page.screenshot(path=os.path.join(shots, name + ".png"))
 
-async def viewport_snapshots(page, report, output, name, screenshots):
-    previous = page.viewport_size
-    for device, width, height in VIEWPORTS:
-        await page.set_viewport_size({"width": width, "height": height})
-        await snapshot(page, report, output, name + "-" + device, screenshots)
-    if previous:
-        await page.set_viewport_size(previous)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
 
+        # ------------------------------------------------------------ 1. 第一次：要麦克风 → 哼一声 → 唱完一首
+        print("第一次进入，唱完一首")
+        ctx = await browser.new_context(viewport={"width": 390, "height": 760}, device_scale_factor=2, locale="zh-CN")
+        await ctx.add_init_script(MIC_SCRIPT)
+        page = await ctx.new_page()
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+        await page.goto(url)
+        await wait_for(page, "!!(window.__siren && __siren.name === 'title')", 5000)
+        await page.evaluate(HOOK)
+        await shot(page, "01-title")
+        H = await page.evaluate("Siren.Gfx.H()")
+        await tap(page, 90, max(await page.evaluate("Siren.Gfx.L.rockFoot") + 4, H - 4 * 28 - 6) + 11)   # 开始
+        R.check("首页 → 选歌", await wait_for(page, "__siren.name === 'select'", 2000))
+        await page.wait_for_timeout(500)
+        await tap(page, 90, 32 + 2 + 44 + 20)    # 第一首（小星星）
+        R.check("第一次点歌：先弹出麦克风说明卡", await wait_for(page, "!!__siren.modal", 2000))
+        await shot(page, "02-mic-card")
+        await page.keyboard.press("Enter")
+        R.check("同意后进入「哼一声试试」", await wait_for(page, "__siren.name === 'hum'", 3000))
+        R.check("哼一声：听见了", await wait_for(page, "Siren.Progress.range() && Siren.Progress.range().comfort > 0", 8000),
+                await page.evaluate("JSON.stringify(Siren.Progress.range())"))
+        await page.wait_for_timeout(500)
+        await shot(page, "03-hum")
+        await page.keyboard.press("Enter")
+        R.check("开始唱", await wait_for(page, "__siren.name === 'play'", 3000))
+        await page.wait_for_timeout(9000)
+        await shot(page, "04-sing")
+        R.check("唱完一首并出船", await wait_for(page, "__siren.name === 'arrive'", 120000))
+        notes = await page.evaluate("__events.filter(e => e.t === 'note').map(e => e.p.tier)")
+        good = len([t for t in notes if t in ("perfect", "great")])
+        R.check("合成歌手唱得准：Perfect/Great 为主", good >= len(notes) * 0.8, "%d/%d" % (good, len(notes)))
+        R.check("唱完立刻存档", await page.evaluate("Siren.Progress.collectedCount()") == 1)
+        await page.wait_for_timeout(9000)
+        await shot(page, "05-arrive")
+        R.check("结尾：介绍卡打完字后出现按钮", await page.evaluate("!!document.getElementById('screen')"))
 
-async def scenario(browser, args, mode, engine):
-    output = args.output
-    report = {"mode": engine + "-" + mode, "engine": engine, "failures": [], "errors": [], "consoleWarnings": [],
-              "requestsFailed": [], "httpErrors": [], "externalRequests": [], "layouts": [], "events": []}
-    synthetic = mode == "microphone"
-    mode = engine + "-" + mode  # keep screenshots and snapshot names per engine
-    context = await browser.new_context(viewport={"width": 1440 if synthetic else 844,
-                                                  "height": 900 if synthetic else 390},
-                                        has_touch=not synthetic, reduced_motion="reduce")
-    if synthetic:
-        await context.add_init_script(MIC_SCRIPT)
-    await context.add_init_script("try {localStorage.setItem('siren.seed', '4821');} catch (_) {}")
-    page = await context.new_page()
-    origin = urlparse(args.url).netloc
-    page.on("pageerror", lambda error: report["errors"].append(str(error)))
-    page.on("console", lambda msg: report["consoleWarnings"].append(msg.text)
-            if msg.type in ("error", "warning") else None)
-    page.on("requestfailed", lambda req: report["requestsFailed"].append({"url": req.url, "error": req.failure}))
-    page.on("response", lambda response: report["httpErrors"].append({"url": response.url, "status": response.status})
-            if response.status >= 400 and not response.url.endswith("favicon.ico") else None)
-    page.on("request", lambda req: report["externalRequests"].append(req.url)
-            if urlparse(req.url).scheme in ("http", "https") and urlparse(req.url).netloc != origin else None)
-    try:
-        await page.goto(args.url, wait_until="networkidle")
-        await page.wait_for_function("window.Siren && Siren.getState().phase === 'HOME'", timeout=10000)
-        # The synthetic singer needs Web Audio and a patchable navigator.mediaDevices. Headless
-        # WebKit ships neither, so the override never installs, the game is told the microphone
-        # was denied and drops into the tap route. That is correct product behaviour, not a
-        # regression, so record the gap instead of failing five unrelated assertions. WebKit is
-        # still worth running: every visual defect found on a real iPad so far was CSS, and the
-        # fallback route exercises the whole layout.
-        audio = await page.evaluate("""() => ({
-          mediaDevices: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
-          audioContext: !!(window.AudioContext || window.webkitAudioContext)
-        })""")
-        report["audioSupport"] = audio
-        if synthetic and not (audio["mediaDevices"] and audio["audioContext"]):
-            report["skipped"] = ("engine exposes no " +
-                                 ("navigator.mediaDevices" if not audio["mediaDevices"] else "AudioContext") +
-                                 "; a synthetic singer cannot be installed here")
-            await context.close()
-            return report
-        await page.evaluate(OBSERVE_SCRIPT, {"events": EVENTS, "synthetic": synthetic})
-        await viewport_snapshots(page, report, output, mode + "-home", args.screenshots)
-        await click_action(page, "start")
-        captured = set()
-        last_event = 0
-        replay_tested = False
-        deadline = time.monotonic() + args.timeout
-        while time.monotonic() < deadline:
-            data = await page.evaluate("""last => ({state: Siren.getState(), now: performance.now(),
-                due: window.__uiQA.tapDue[0], events: window.__uiQA.events.slice(last),
-                count: window.__uiQA.events.length})""", last_event)
-            state = data["state"]
-            last_event = data["count"]
-            report["events"].extend(data["events"])
-            key = state["subPhase"] if state["phase"] in ("LEARN_LOOP", "RHYTHM_FALLBACK") else state["phase"]
-            if key and key not in captured and key not in ("BOOT", "PERM_REQUEST", "ANALYZE"):
-                captured.add(key)
-                await snapshot(page, report, output, mode + "-" + key.lower(), args.screenshots)
-                if synthetic and key in ("TUTORIAL", "LISTEN", "RECORD", "PHRASE_RESULT", "FINALE"):
-                    await viewport_snapshots(page, report, output, mode + "-" + key.lower(), args.screenshots)
-                print(mode + ": " + key, flush=True)
-                shown = [c.get("action") for c in report["layouts"][-1]["controls"]]
-                if key == "TUTORIAL" and "skip-tutorial" not in shown:
-                    report["failures"].append("TUTORIAL shows no skip control")
-                if key == "FINALE" and ("abort" in shown or "skip-tutorial" in shown):
-                    report["failures"].append("FINALE offers a way to skip the player's recording")
-            if synthetic and state["phase"] == "LEARN_LOOP" and state["subPhase"] == "LISTEN" and not replay_tested:
-                replay_tested = await click_action(page, "replay", required=False)
-                if replay_tested:
-                    report["replayClicked"] = True
-            if not synthetic and state["subPhase"] == "RECORD" and data["due"] is not None and data["now"] >= data["due"]:
-                await page.evaluate("window.__uiQA.tapDue.shift()")
-                target = page.locator('#tap-target, [data-action="tap"], [data-action="rhythm"]')
-                if await target.count() and await target.first.is_visible():
-                    if await target.first.is_disabled():
-                        raise AssertionError("Rhythm tap target is disabled during RECORD")
-                    await target.first.click(no_wait_after=True)
-                else:
-                    await page.mouse.click(page.viewport_size["width"] * .62, page.viewport_size["height"] * .80)
-            if state["phase"] == "SHARE_CARD":
-                break
-            if state["phase"] == "RESULT":
-                # Some backends expose a short RESULT transition, others wait for a share action.
-                await page.wait_for_timeout(500)
-                if await page.evaluate("Siren.getState().phase") == "RESULT":
-                    if not await click_action(page, "share", required=False):
-                        report["failures"].append("RESULT has no share action")
-                        break
-            await page.wait_for_timeout(35)
-        else:
-            report["failures"].append("Game did not finish within " + str(args.timeout) + " seconds")
+        # ------------------------------------------------------------ 2. 暂停 / 继续 / 退出
+        print("暂停与退出")
+        await page.evaluate("__siren.go('select')")
+        await page.wait_for_timeout(400)
+        await page.evaluate("__siren.startSong(Siren.SONGS[1])")
+        await wait_for(page, "Siren.Session.getState().phase === 'listen'", 5000)
+        await page.wait_for_timeout(800)
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(100)
+        R.check("返回键 = 暂停", await page.evaluate("Siren.Session.getState().paused"))
+        R.check("暂停后 100ms 内没有她的歌声", await page.evaluate("Siren.Audio.voiceCount()") == 0)
+        await shot(page, "06-pause")
+        await page.keyboard.press("Enter")
+        R.check("继续：从这一句的「听她唱」重新开始", await wait_for(page, "Siren.Session.getState().phase === 'listen' && !Siren.Session.getState().paused", 2000))
+        await page.wait_for_timeout(600)
+        await page.evaluate("Siren.Session.pause()")
+        await page.wait_for_timeout(100)
+        await tap(page, 90, (H - 128) // 2 + 92 + 12)   # 退出
+        await page.wait_for_timeout(150)
+        R.check("退出：回到选歌，没有残留的歌声", await page.evaluate("__siren.name === 'select' && Siren.Audio.voiceCount() === 0 && Siren.Session.getState().phase === 'idle'"))
 
-        report["finalState"] = await page.evaluate("Siren.getState()")
-        report["trace"] = await page.evaluate("""({events: __uiQA.events, voiced: __uiQA.voiced,
-            unvoiced: __uiQA.unvoiced, starts: __uiQA.starts, silence: __uiQA.silence,
-            tieredNotes: __uiQA.tieredNotes})""")
-        events = report["trace"]["events"]
-        tutorial_events = [event for event in events if event.get("phase") == "TUTORIAL"]
-        events = [event for event in events if event.get("phase") != "TUTORIAL"]
-        notes = [event["payload"] for event in events if event["type"] == "attempt:note"]
-        replays = [event["payload"] for event in events if event["type"] == "player:replay"]
-        if synthetic:
-            if "TUTORIAL" not in captured:
-                report["failures"].append("First run did not show the tutorial")
-            if not any(event["type"] == "ship:wrecked" for event in tutorial_events):
-                report["failures"].append("Tutorial showed no ship reacting to the voice")
-            if not notes or any(note["tier"] not in TIERS for note in notes):
-                report["failures"].append("attempt:note missing or carries an unknown tier")
-            if not report["trace"]["tieredNotes"]:
-                report["failures"].append("attempt:note never reached the note track")
-            if len(replays) != 1 or replays[0]["durationMs"] <= 0 or not replays[0]["parts"]:
-                report["failures"].append("Expected exactly one non-empty player:replay at the finale")
-        elif replays:
-            report["failures"].append("Rhythm fallback has no recording but emitted player:replay")
-        if any(event["type"] == "melody:replay" for event in events):
-            report["failures"].append("melody:replay is retired at the finale (contract C5) but was emitted")
-        phrases = [event["payload"] for event in events if event["type"] == "phrase:result"]
-        report["phraseResults"] = phrases
-        if [item["phraseIndex"] for item in phrases] != list(range(5)):
-            report["failures"].append("Expected exactly five ordered phrase results")
-        if len([event for event in events if event["type"] == "ship:in"]) != 100:
-            report["failures"].append("Expected all 100 actual ship entry events")
-        ship_ids = [event["payload"]["id"] for event in events if event["type"] == "ship:in"]
-        if len(set(ship_ids)) != len(ship_ids):
-            report["failures"].append("Duplicate ship IDs emitted during a run")
-        if sum(item["newWrecked"] for item in phrases) != report["finalState"]["shipsWrecked"]:
-            report["failures"].append("Final boat count differs from sum of phrase results")
-        if len([event for event in events if event["type"] == "ship:wrecked"]) != report["finalState"]["shipsWrecked"]:
-            report["failures"].append("Final boat count differs from actual wrecked ship events")
-        if not report["finalState"]["shipsWrecked"]:
-            report["failures"].append("Supplied musical input failed to attract any ships")
-        # The rhythm route has no recording to play back, so FINALE passes straight to RESULT there.
-        required = {"LISTEN", "COUNTDOWN", "RECORD", "PULL", "PHRASE_RESULT"} | ({"TUTORIAL", "FINALE"} if synthetic else set())
-        if not required.issubset(captured):
-            report["failures"].append("Missing displayed states: " + str(sorted(required - captured)))
-        if synthetic and report["trace"]["voiced"] < 5:
-            report["failures"].append("Synthetic microphone produced too few actual voiced pitch events")
-        if synthetic and 2 not in report["trace"]["silence"]:
-            report["failures"].append("The intentionally silent phrase did not finish as silence")
-        if synthetic and not report.get("replayClicked"):
-            report["failures"].append("Replay could not be exercised via the UI")
-        for index, event in enumerate(events):
-            if event["type"] not in ("melody:phraseStart", "melody:replay"):
-                continue
-            end_ms = max((note["startMs"] + note["durationMs"] for note in event["payload"]["notes"]), default=0)
-            next_state = next((later for later in events[index + 1:] if later["type"] == "state:change" and
-                               (later["payload"]["subPhase"] == "COUNTDOWN" if event["type"] == "melody:phraseStart"
-                                else later["payload"]["phase"] == "RESULT")), None)
-            if next_state and next_state["at"] - event["at"] < end_ms - 80:
-                report["failures"].append(event["type"] + " advanced UI before the scheduled notes finished")
-        if not synthetic and not any(event["type"] == "error" and event["payload"].get("code") == "MIC_DENIED" for event in events):
-            report["failures"].append("Fresh context did not exercise microphone denial")
-        await viewport_snapshots(page, report, output, mode + "-result", args.screenshots)
-        await click_action(page, "share")
-        await viewport_snapshots(page, report, output, mode + "-share", args.screenshots)
-        if report["finalState"]["phase"] == "SHARE_CARD":
-            body = await page.locator("body").inner_text()
-            if "截屏" not in body and "截图" not in body:
-                report["failures"].append("Share view lacks screenshot instruction")
-        await click_action(page, "close-share")
-        await page.wait_for_timeout(160)
-        report["afterCloseShare"] = await page.evaluate(LAYOUT_SCRIPT)
-        restart_action = "new-melody" if synthetic else "restart"
-        if await click_action(page, restart_action):
-            await page.wait_for_function("Siren.getState().shipsSpawned === 0 && Siren.getState().shipsWrecked === 0", timeout=5000)
-            restarted = await page.evaluate("Siren.getState()")
-            report["restartState"] = restarted
-            if restarted["shipsSpawned"] != 0 or restarted["shipsWrecked"] != 0:
-                report["failures"].append("Restart did not reset boat counters")
-            if synthetic and restarted["seed"] == report["finalState"]["seed"]:
-                report["failures"].append("New melody did not change seed")
-            if not synthetic and restarted["seed"] != report["finalState"]["seed"]:
-                report["failures"].append("Restart unexpectedly changed melody")
-            if await click_action(page, "abort"):
-                await page.wait_for_function("Siren.getState().phase === 'HOME'", timeout=2500)
-                report["abortState"] = await page.evaluate("Siren.getState()")
-    except Exception as error:
-        report["failures"].append(type(error).__name__ + ": " + str(error))
-        if args.screenshots:
-            await page.screenshot(path=str(output / (mode + "-failure.png")))
-    finally:
-        if report["errors"]:
-            report["failures"].append("Uncaught browser errors: " + str(report["errors"]))
-        listener_errors = [line for line in report["consoleWarnings"] if "listener error" in line]
-        if listener_errors:
-            report["failures"].append("Frontend event listener errors: " + str(listener_errors))
-        if report["externalRequests"]:
-            report["failures"].append("External network requests: " + str(report["externalRequests"]))
-        if report["httpErrors"] or report["requestsFailed"]:
-            report["failures"].append("Failed resources: " + str(report["httpErrors"] + report["requestsFailed"]))
-        (output / (mode + ".json")).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-        await context.close()
-    return report
+        # ------------------------------------------------------------ 3. 练习
+        print("练习")
+        await page.evaluate("__siren.go('practice')")
+        await page.wait_for_timeout(400)
+        await shot(page, "07-practice")
+        await page.evaluate("window.__qa.humMidi = 57; __siren.startPractice('find')")
+        R.check("练习「找到第一个音」做完", await wait_for(page, "Siren.Progress.practiceDone('find')", 60000))
+        await page.wait_for_timeout(800)
+        await shot(page, "08-practice-done")
 
+        # ------------------------------------------------------------ 4. 设置：语言、清除进度
+        print("设置")
+        await page.evaluate("__siren.go('settings')")
+        await page.wait_for_timeout(400)
+        await tap(page, 90, 40 + 36 + 15)    # 语言
+        R.check("切换语言", await page.evaluate("Siren.Progress.lang()") == "en")
+        await shot(page, "09-settings-en")
+        await tap(page, 90, 40 + 36 * 2 + 48 + 36 * 2 + 12 + 15)   # 清除进度
+        await page.wait_for_timeout(200)
+        await page.evaluate("Siren.Progress.reset()")
+        R.check("清除进度：图鉴清空、语言保留", await page.evaluate("Siren.Progress.collectedCount() === 0 && Siren.Progress.lang() === 'en'"))
+        R.check("全程没有脚本错误", not errors, errors[:3])
+        await ctx.close()
 
-async def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default="http://127.0.0.1:4173")
-    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] / "output" / "ui-validation")
-    parser.add_argument("--timeout", type=int, default=180)
-    parser.add_argument("--screenshots", action="store_true")
-    parser.add_argument("--mode", choices=["all", "fallback", "microphone"], default="all")
-    parser.add_argument("--engine", choices=["all", "chromium", "webkit"], default="all")
-    args = parser.parse_args()
-    args.output.mkdir(parents=True, exist_ok=True)
+        # ------------------------------------------------------------ 5. 拒绝麦克风：点按模式
+        print("拒绝麦克风")
+        ctx = await browser.new_context(viewport={"width": 360, "height": 640}, device_scale_factor=2, locale="en-US")
+        await ctx.add_init_script(DENY_SCRIPT)
+        page = await ctx.new_page()
+        await page.goto(url)
+        await wait_for(page, "!!(window.__siren && __siren.name === 'title')", 5000)
+        await page.evaluate("Siren.Progress.setOnboarded(); __siren.startSong(Siren.SONGS[2])")
+        await page.wait_for_timeout(300)
+        await page.keyboard.press("Enter")
+        R.check("拒绝后进入点按模式", await wait_for(page, "Siren.Session.getState().tap === true", 8000))
+        await wait_for(page, "Siren.Session.getState().phase === 'sing'", 15000)
+        await page.wait_for_timeout(400)
+        await shot(page, "10-tap")
+        R.check("麦克风状态：未允许", await page.evaluate("Siren.Session.micState()") == "denied")
+        await ctx.close()
 
-    # WebKit honours the environment's proxy for localhost, where Chromium bypasses it. A proxied
-    # 127.0.0.1 answers 502 and the run dies with no page at all, so drop the proxy when the
-    # target is local.
-    if urlparse(args.url).hostname in ("localhost", "127.0.0.1", "::1"):
-        for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
-            os.environ.pop(name, None)
-        os.environ["NO_PROXY"] = "*"
+        # ------------------------------------------------------------ 6. 版面：三种尺寸
+        print("版面")
+        for (w, h, name) in ((360, 640, "small"), (390, 844, "tall"), (1280, 800, "desktop")):
+            ctx = await browser.new_context(viewport={"width": w, "height": h}, device_scale_factor=2)
+            page = await ctx.new_page()
+            await page.goto(url)
+            await wait_for(page, "!!(window.__siren && __siren.name === 'title')", 5000)
+            box = await page.evaluate("(() => { const r = document.getElementById('screen').getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; })()")
+            R.check("%s：画布完整在屏幕内" % name, box[0] >= -0.5 and box[1] >= -0.5 and box[2] <= w + 0.5 and box[3] <= h + 0.5, box)
+            await shot(page, "11-layout-" + name)
+            await ctx.close()
 
-    modes = ["fallback", "microphone"] if args.mode == "all" else [args.mode]
-    engines = ["chromium", "webkit"] if args.engine == "all" else [args.engine]
-    reports = []
-    async with async_playwright() as playwright:
-        for engine in engines:
-            if engine == "chromium":
-                browser = await playwright.chromium.launch(headless=True, args=[
-                    "--disable-background-timer-throttling",
-                    "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"])
-            else:
-                browser = await playwright.webkit.launch(headless=True)
-            reports += await asyncio.gather(*(scenario(browser, args, mode, engine) for mode in modes))
-            await browser.close()
-    lines = ["# Frontend browser acceptance report", "", "Real Chromium and WebKit state-machine runs; no internal state mutation.", "",
-             "Microphone route uses a synthetic Web Audio stream. Physical device, permissions, and human singing require manual verification.", ""]
-    failures = 0
-    for report in reports:
-        if report.get("skipped"):
-            lines += ["## " + report["mode"], "", "Result: SKIPPED", "", "- " + report["skipped"], ""]
-            continue
-        failures += len(report["failures"])
-        lines += ["## " + report["mode"], "", "Result: " + ("PASS" if not report["failures"] else "FAIL"), ""]
-        lines += ["- " + failure for failure in report["failures"]]
-        lines += ["", "Observed " + str(len(report.get("phraseResults", []))) + " phrase results.", ""]
-    (args.output / "REPORT.md").write_text("\n".join(lines), encoding="utf-8")
-    print(json.dumps({"failures": failures, "report": str(args.output / "REPORT.md")}, ensure_ascii=False), flush=True)
-    raise SystemExit(1 if failures else 0)
+        await browser.close()
+    httpd.shutdown()
+    print("\n%d 项通过，%d 项失败" % (R.passed, len(R.failed)))
+    return 1 if R.failed else 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--shots", default=None, help="截图保存目录")
+    sys.exit(asyncio.run(run(ap.parse_args())))
