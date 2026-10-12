@@ -8,7 +8,7 @@
  *
  * ⚠️ 本模块的核心设计难点：**异步持久层 + 同步读数**。
  *    `miniTool.setStorage / getStorage` 都是 Promise 的，而 `Store.get()` 被前端
- *    与 game.js 同步调用（无法改成 async，否则要动契约与前端代码）。
+ *    与 session.js 同步调用（无法改成 async，否则要动契约与前端代码）。
  *    解法：**内存缓存为主 + 异步写穿（write-through）**
  *      · 读：永远读内存缓存，同步、零延迟 → 调用方完全不用改
  *      · 写：同步更新缓存（立刻可读），再后台异步落盘到 miniTool
@@ -27,14 +27,24 @@
 
   var PREFIX = 'siren.';
 
+  /**
+   * v2 键表。⚠️ init / clearAll 只认这张表里的键：新增存储项必须先登记在这里。
+   * v1 的键（best.wrecked / plays / seed / tutorialDone …）随玩法一起废止，不再读写。
+   */
   var KEYS = {
-    BEST_WRECKED: PREFIX + 'best.wrecked',     // 单局最高触礁船数（0..100）
-    BEST_SCORE: PREFIX + 'best.score',         // 单局最高共鸣度
-    PLAYS: PREFIX + 'plays',                   // 累计局数
-    SEED: PREFIX + 'seed',                     // 上次使用的种子，便于复现
-    MIC_OK: PREFIX + 'mic.ok',                 // 上次麦克风是否可用（'1' / '0'）
-    MUTED: PREFIX + 'muted',                   // 音效是否静音
-    TUTORIAL_DONE: PREFIX + 'tutorialDone'     // 是否已走过新手引导关（v1.1.0）
+    LANG: PREFIX + 'lang',                 // 'zh' | 'en'（没选过就跟随系统）
+    SFX_OFF: PREFIX + 'sfxOff',            // 音效与海浪关闭（她的歌声不受影响）
+    MIC_OK: PREFIX + 'mic.ok',             // 上次麦克风是否可用（'1' / '0'）
+    ONBOARDED: PREFIX + 'onboarded',       // 是否已「哼一声试试」
+    CODEX: PREFIX + 'codex',               // JSON { shipKey: 来访次数 }
+    RECENT: PREFIX + 'recent',             // JSON [最近来过的船 key]，最多 3 个
+    DUPES: PREFIX + 'dupes',               // 连续来了几艘见过的船（保底计数）
+    SONGS: PREFIX + 'songs',               // JSON { songId: { plays, lastShip } }
+    LAST_SONG: PREFIX + 'lastSong',        // 上次唱的歌
+    PRACTICE: PREFIX + 'practice',         // JSON { exerciseId: true }
+    RANGE: PREFIX + 'range',               // JSON { comfort, lo, hi }（海妖音域里的 MIDI）
+    PREF_SHIFT: PREFIX + 'prefShift',      // 唱歌时被动学到的偏好移调（半音）
+    LATENCY: PREFIX + 'latency'            // 上次估出的整体延迟（ms）
   };
 
   /** Storage JS API 所需的最低客户端版本（官方文档 §3.7：客户端 9.46.0） */
@@ -120,7 +130,7 @@
   /**
    * 异步初始化：把持久层的数据灌进缓存。
    *
-   * 必须在读任何业务数据之前调用一次（`game.js` 的 `init()` 里已 await）。
+   * 必须在读任何业务数据之前调用一次（`session.js` 的 `init()` 里已 await）。
    * 未调用也能工作，但拿不到上次的数据——所以**不能省**。
    *
    * @returns {Promise<string>} 实际生效的后端名，便于诊断
@@ -215,26 +225,15 @@
     }
   }
 
-  /** 一次性读取本机战绩 */
-  function stats() {
-    return {
-      bestWrecked: getNumber(KEYS.BEST_WRECKED, 0),
-      bestScore: getNumber(KEYS.BEST_SCORE, 0),
-      plays: getNumber(KEYS.PLAYS, 0),
-      muted: getBool(KEYS.MUTED, false)
-    };
+  /** JSON 读写（坏数据当作没有） */
+  function getJSON(key, fallback) {
+    var raw = get(key, null);
+    if (raw === null) return fallback;
+    try { var v = JSON.parse(raw); return v === null || v === undefined ? fallback : v; } catch (e) { return fallback; }
   }
 
-  /** 一局结束后写入战绩，返回是否刷新了记录 */
-  function commitRun(wreckedTotal, scoreTotal) {
-    var best = getNumber(KEYS.BEST_WRECKED, 0);
-    var isRecord = wreckedTotal > best;
-    if (isRecord) {
-      set(KEYS.BEST_WRECKED, wreckedTotal);
-      set(KEYS.BEST_SCORE, scoreTotal);
-    }
-    set(KEYS.PLAYS, getNumber(KEYS.PLAYS, 0) + 1);
-    return isRecord;
+  function setJSON(key, value) {
+    return set(key, JSON.stringify(value));
   }
 
   /**
@@ -262,8 +261,8 @@
     setBool: setBool,
     remove: remove,
     clearAll: clearAll,
-    stats: stats,
-    commitRun: commitRun,
+    getJSON: getJSON,
+    setJSON: setJSON,
     _resetForTest: function () { cache = {}; ready = false; persistFailures = 0; }
   };
 })(typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {}));
