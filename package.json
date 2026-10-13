@@ -1,16 +1,17 @@
 {
   "name": "siren-minitool",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "《塞壬的小把戏》离线 H5 游戏 · 完整前端与声音玩法，打包为可上传 zip",
+  "description": "《塞壬的小把戏》v2 · 竖屏像素版离线 H5 游戏：跟塞壬一句一句学唱，唱完一首就有一艘船开过来",
   "scripts": {
-    "test": "node tools/test-pitch.mjs && node tools/test-score.mjs && node tools/test-fleet.mjs && node tools/test-hum.mjs && node tools/test-integration.mjs && node tools/test-lifecycle.mjs",
+    "test": "node tools/test-pitch.mjs && node tools/test-songs.mjs && node tools/test-judge.mjs && node tools/test-session.mjs",
     "check": "node tools/selfcheck.mjs",
-    "verify": "node tools/selfcheck.mjs && node tools/test-pitch.mjs && node tools/test-score.mjs && node tools/test-fleet.mjs && node tools/test-hum.mjs && node tools/test-integration.mjs && node tools/test-lifecycle.mjs && node tools/pack.mjs --check-only",
+    "verify": "node tools/selfcheck.mjs && node tools/test-pitch.mjs && node tools/test-songs.mjs && node tools/test-judge.mjs && node tools/test-session.mjs && node tools/pack.mjs --check-only && node .skill/minitool-zip-builder/scripts/audit_artifact.mjs game",
     "build": "node tools/pack.mjs",
     "build:review": "node tools/pack.mjs --no-camera --out=dist/haixiao-minitool-review.zip",
-    "curve": "node tools/show-wreck-rate.mjs",
+    "assets": "python3 art-source/pixel/build.py",
+    "assets:font": "python3 art-source/pixel/build.py --font",
     "serve": "node tools/serve.mjs"
   }
 }

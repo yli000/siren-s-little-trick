@@ -10,6 +10,12 @@
  *   · 颤音：5–6Hz，深度 10–20 音分，延迟 150ms 淡入
  *   · 节拍网格：BPM 92 → 四分 652.17ms，八分 326.09ms，全部整数八分格
  *
+ * v2 新增：
+ *   · 两条总线：她的歌声（voice）/ 音效与海浪（sfx）。设置里的「音效与海浪」只关后者（审查第 10 条）
+ *   · sfx(name, when)：界面音效、倒数「嗒」、出船音效等，全部登记在 scheduledVoices 里，
+ *     stopPlayback() 会一起取消 —— 离开界面后不会再有任何排好的声音响起（v2 修改意见 §2）
+ *   · seaStart / seaLevel：海浪底噪（录音时淡到 0，审查第 1 条）
+ *
  * ⚠️ 本文件是唯一允许触碰 AudioContext 的模块；仍不得触碰 DOM 渲染（D0 硬规则 1）。
  *    不打包任何音频文件，全部代码合成。
  */
@@ -57,6 +63,9 @@
   var noiseBuffer = null;
   var irBuilt = false;
   var muted = false;
+  var sfxBus = null;       // 音效与海浪
+  var sfxMuted = false;
+  var sea = null;          // { src, gain }
 
   // 音色链缓存：每种音色一条共振峰链（避免每次发声重建 BiquadFilter）
   var chains = {};
@@ -71,6 +80,21 @@
    * 保证 AudioContext 已创建并处于 running。
    * ⚠️ 必须在用户手势内调用（iOS 关键）。
    */
+  var held = false;   // 切到后台时整个 AudioContext 挂起，回到前台前不自动恢复
+
+  /** 切后台：挂起整个音频（海浪、音效、她的声音一起停），回来时 wake() */
+  function hold() {
+    held = true;
+    if (ctx && ctx.state === 'running' && typeof ctx.suspend === 'function') {
+      var p = ctx.suspend();
+      if (p && typeof p.catch === 'function') p.catch(function () { /* 忽略 */ });
+    }
+  }
+  function wake() {
+    held = false;
+    if (ctx) ensureAudio();
+  }
+
   function ensureAudio() {
     if (!ctx) {
       var Ctor = global.AudioContext || global.webkitAudioContext;
@@ -78,7 +102,7 @@
       ctx = new Ctor();
       buildOutputChain();
     }
-    if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+    if (!held && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
       // 返回 Promise，但调用方可能不 await；这里不阻塞
       var p = ctx.resume();
       if (p && typeof p.catch === 'function') p.catch(function () { /* 忽略 */ });
@@ -128,6 +152,10 @@
 
     masterGain.connect(limiter);
     limiter.connect(ctx.destination);
+
+    sfxBus = ctx.createGain();
+    sfxBus.gain.value = sfxMuted ? 0 : 1;
+    sfxBus.connect(masterGain);
 
     // 混响支路（IR 延后生成，只在需要时构建一次）
     dryGain.connect(masterGain);
@@ -202,6 +230,13 @@
       bp.Q.value = 0.9;
       input.connect(bp);
       bp.connect(out);
+    } else if (type === 'horn') {
+      // 船笛：锯齿波过低通，闷一点、远一点
+      var lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 520;
+      input.connect(lp);
+      lp.connect(out);
     } else {
       input.connect(out);
     }
@@ -242,7 +277,7 @@
     var durationS = Math.max(0.06, requestedS - DURATION_GAP_MS / 1000);
 
     var peak = o.gain !== undefined ? o.gain
-      : (type === 'siren' ? 0.16 : type === 'cue' ? 0.07 : 0.12);
+      : (type === 'siren' ? 0.16 : type === 'cue' ? 0.07 : type === 'horn' ? 0.1 : type === 'ui' ? 0.06 : 0.12);
 
     var chain = chainFor(type);
     var voiceGain = ctx.createGain();
@@ -250,7 +285,7 @@
 
     // 包络（D4.3）
     voiceGain.gain.setValueAtTime(0, now);
-    voiceGain.gain.linearRampToValueAtTime(peak, now + ATTACK_S);
+    voiceGain.gain.linearRampToValueAtTime(peak, now + (type === 'horn' ? 0.12 : type === 'ui' || type === 'tick' ? 0.004 : ATTACK_S));
     voiceGain.gain.exponentialRampToValueAtTime(0.0001, now + durationS);
 
     voiceGain.connect(chain.input);
@@ -270,7 +305,7 @@
         for (var h = 0; h < HARMONICS.length; h += 1) imag[h] = HARMONICS[h];
         osc.setPeriodicWave(ctx.createPeriodicWave(real, imag, { disableNormalization: false }));
       } else {
-        osc.type = type === 'tick' ? 'square' : 'triangle';
+        osc.type = type === 'tick' ? 'square' : type === 'horn' ? 'sawtooth' : type === 'ui' ? 'sine' : 'triangle';
       }
 
       var f = o.freq * Math.pow(2, cents[i] / 1200);
@@ -321,10 +356,10 @@
       chain.output.connect(dryGain);
       if (convolver) chain.output.connect(convolver);
     } else {
-      chain.output.connect(masterGain);
+      chain.output.connect(type === 'siren' ? masterGain : (sfxBus || masterGain));
     }
 
-    var voice = { oscillators: oscillators, gain: voiceGain, timer: null, stopped: false };
+    var voice = { oscillators: oscillators, gain: voiceGain, timer: null, stopped: false, sfx: type !== 'siren' };
     scheduledVoices.push(voice);
     activeVoices += 1;
     // 排程中的音也要保留，不能在它真正开始之前就丢掉取消句柄。
@@ -403,6 +438,99 @@
     });
   }
 
+  // ---------------------------------------------------------------- v2 音效
+
+  function midiHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+  function blip(midi, at, dur, type, gain) {
+    playTone({ type: type || 'ui', freq: midiHz(midi), startTime: at, durationS: dur + DURATION_GAP_MS / 1000,
+      gain: gain, detune: false, vibrato: false, reverb: false });
+  }
+
+  /**
+   * 界面与流程音效。全部走 sfx 总线（设置里可关）。
+   * @param {string} name  tap / perfect / great / good / tick / horn / reveal / star / stamp / type / open
+   * @param {number} [when] AudioContext 时间；省略为立刻
+   */
+  function sfx(name, when) {
+    if (!ctx) return;
+    var t = when !== undefined ? when : ctx.currentTime + 0.01;
+    switch (name) {
+      case 'tap': blip(76, t, 0.05); break;
+      case 'open': blip(72, t, 0.05); blip(79, t + 0.05, 0.07); break;
+      case 'perfect': blip(88, t, 0.06); blip(93, t + 0.06, 0.1); break;
+      case 'great': blip(88, t, 0.09); break;
+      case 'good': blip(84, t, 0.07); break;
+      case 'tick': blip(79, t, 0.045, 'cue', 0.1); break;
+      case 'horn': blip(45, t, 0.9, 'horn'); blip(52, t, 0.9, 'horn'); break;
+      case 'reveal': [72, 76, 79, 84, 88].forEach(function (m, i) { blip(m, t + i * 0.07, 0.25, 'cue', 0.09); }); break;
+      case 'star': blip(86, t, 0.05); break;
+      case 'stamp': blip(43, t, 0.12, 'horn'); blip(79, t, 0.04, 'cue', 0.1); break;
+      case 'type': blip(98, t, 0.012, 'ui', 0.03); break;
+      default: break;
+    }
+  }
+
+  /** 海浪底噪：一段循环的低通噪声，缓慢起伏。须在用户手势之后调用。 */
+  function seaStart() {
+    if (!ctx || sea) return;
+    try {
+      var len = ctx.sampleRate * 2;
+      var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      var d = buf.getChannelData(0);
+      var last = 0;
+      for (var i = 0; i < len; i += 1) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.2; }
+      var src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      var lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 520;
+      var g = ctx.createGain();
+      g.gain.value = 0;
+      var lfo = ctx.createOscillator();
+      var lfoGain = ctx.createGain();
+      lfo.frequency.value = 0.13;
+      lfoGain.gain.value = 0.05;
+      lfo.connect(lfoGain);
+      var level = ctx.createGain();
+      level.gain.value = 0.14;
+      lfoGain.connect(level.gain);
+      src.connect(lp);
+      lp.connect(level);
+      level.connect(g);
+      g.connect(sfxBus || masterGain);
+      src.start();
+      lfo.start();
+      sea = { src: src, gain: g, lfo: lfo };
+      g.gain.linearRampToValueAtTime(1, ctx.currentTime + 1.2);
+    } catch (e) { sea = null; }
+  }
+
+  /** 海浪音量 0–1，rampS 秒内过渡 */
+  function seaLevel(v, rampS) {
+    if (!ctx || !sea) return;
+    var g = sea.gain.gain;
+    var now = ctx.currentTime;
+    try {
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(Math.max(0, Math.min(1, v)), now + Math.max(0.01, rampS || 0.3));
+    } catch (e) { /* 忽略 */ }
+  }
+
+  function setSfxMuted(v) {
+    sfxMuted = !!v;
+    if (sfxBus) sfxBus.gain.value = sfxMuted ? 0 : 1;
+  }
+
+  /** 还在排程或发声的「她的歌声」声部数（不含音效）——测试用来验证退出后没有残留 */
+  function voiceCount() {
+    var n = 0;
+    for (var i = 0; i < scheduledVoices.length; i += 1) if (!scheduledVoices[i].sfx) n += 1;
+    return n;
+  }
+
   // ---------------------------------------------------------------- 控制
 
   function setMuted(v) {
@@ -455,6 +583,11 @@
       activeVoices: activeVoices,
       irBuilt: irBuilt,
       muted: muted,
+      sfxMuted: sfxMuted,
+      voices: voiceCount(),
+      sea: !!sea,
+      seaGain: sea ? sea.gain.gain.value : 0,
+      held: held,
       wet: WET,
       bpm: BPM
     };
@@ -529,11 +662,18 @@
 
   Siren.Audio = {
     ensureAudio: ensureAudio,
+    hold: hold,
+    wake: wake,
     ready: ready,
     playPhrase: playPhrase,
     playTone: playTone,
     cue: cue,
     tick: tick,
+    sfx: sfx,
+    seaStart: seaStart,
+    seaLevel: seaLevel,
+    setSfxMuted: setSfxMuted,
+    voiceCount: voiceCount,
     setMuted: setMuted,
     isMuted: isMuted,
     stopPlayback: stopPlayback,

@@ -145,16 +145,23 @@ for (const f of htmlFiles) {
 console.log('');
 console.log('【4】脚本加载顺序（被依赖的命名空间必须先加载）');
 const NAMESPACE_OWNERS = [
-  { file: 'js/core/pitch.js', provides: ['Siren.Pitch'] },
+  { file: 'data/songs.js', provides: ['Siren.SONGS'] },
+  { file: 'data/ships.js', provides: ['Siren.SHIPS', 'Siren.RARITY'] },
+  { file: 'data/i18n.js', provides: ['Siren.I18N'] },
+  { file: 'data/changelog.js', provides: ['Siren.CHANGELOG'] },
+  { file: 'data/sprites.js', provides: ['Siren.SPRITES', 'Siren.SIREN_META'] },
+  { file: 'data/font.js', provides: ['Siren.FONT'] },
   { file: 'js/core/store.js', provides: ['Siren.Store'] },
-  { file: 'js/core/segment.js', provides: ['Siren.Segment'] },
-  { file: 'js/core/score.js', provides: ['Siren.Score'] },
+  { file: 'js/core/pitch.js', provides: ['Siren.Pitch'] },
+  { file: 'js/core/music.js', provides: ['Siren.Music'] },
+  { file: 'js/core/judge.js', provides: ['Siren.Judge'] },
   { file: 'js/core/audio.js', provides: ['Siren.Audio'] },
-  { file: 'data/melodies.js', provides: ['Siren.MELODIES'] },
-  { file: 'js/core/melody.js', provides: ['Siren.Melody'] },
-  { file: 'js/core/fleet.js', provides: ['Siren.Fleet'] },
-  { file: 'js/core/game.js', provides: ['Siren.Game'] },
+  { file: 'js/core/progress.js', provides: ['Siren.Progress'] },
+  { file: 'js/core/practice.js', provides: ['Siren.Practice'] },
+  { file: 'js/core/session.js', provides: ['Siren.Session'] },
   { file: 'js/core/index.js', provides: ['Siren'] },
+  { file: 'js/ui/gfx.js', provides: ['Siren.Gfx'] },
+  { file: 'js/ui/widgets.js', provides: ['Siren.UI'] },
 ];
 
 for (const f of htmlFiles) {

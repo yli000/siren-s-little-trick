@@ -1,49 +1,34 @@
-/* 塞壬的小把戏 —— 后端入口：index.js
+/* 塞壬的小把戏 —— 后端入口：index.js（v2）
  *
- * 依据：03-接口契约 C1。这是前后端唯一的交界。
+ * 前端只用这几个命名空间：
+ *   Siren.Session   一首歌 / 一组练习 / 哼一声的流程（getState 每帧读 + 少量事件）
+ *   Siren.Progress  图鉴、唱过的歌、练习、音区、设置
+ *   Siren.Audio     界面音效、海浪、静音
+ *   Siren.Music     简谱解析（画旋律走向缩略图用）
  *
- * ⚠️ 唯一对外暴露的只有契约列出的方法：
- *      init / start / replayPhrase / skipTutorial / abort / on / off / getState / version
- *    绝不在 window.Siren 上挂 _scoreAttempt 等内部函数——
- *    契约 D7.1/P4 要求"只有一个数字：船数"，暴露维度拆解等于把 P4 承诺作废。
- *    各模块的内部接口都带下划线前缀（Siren.Score._xxx），供离线验证使用，不属于前端契约。
- *
- * 加载顺序（D2，不可乱）：
- *   data/melodies.js → store → pitch → segment → score → audio → melody → fleet → game → index
+ * 加载顺序（不可乱）：
+ *   data/songs.js → data/ships.js → store → pitch → music → judge → audio → progress → practice → session → index
  */
 
 (function (global) {
   'use strict';
 
   var Siren = global.Siren = global.Siren || {};
-  var Game = Siren.Game;
 
-  if (!Game) {
-    // 加载顺序错了：给出明确的技术错误，不静默失败
+  if (!Siren.Session) {
     if (global.console && global.console.error) {
-      global.console.error('[Siren] game.js 未加载，请检查 index.html 的脚本顺序（D2）');
+      global.console.error('[Siren] session.js 未加载，请检查 index.html 的脚本顺序');
     }
     return;
   }
 
-  var VERSION = '1.1.0';   // 契约 C1 规定的版本号（v1.1.0 起含 TUTORIAL / skipTutorial）
+  Siren.version = '2.0.0';
 
-  // 契约 C1 的成员
-  Siren.init = Game.init;
-  Siren.start = Game.start;
-  Siren.replayPhrase = Game.replayPhrase;
-  Siren.skipTutorial = Game.skipTutorial;   // v1.1.0：跳过新手引导关（契约 C2 TUTORIAL）
-  Siren.abort = Game.abort;
-  Siren.on = Game.on;
-  Siren.off = Game.off;
-  Siren.getState = Game.getState;
-  Siren.version = VERSION;
-
-  // 只读常量与能力自检（供前端判断环境，不属于状态机）
+  // 只读的能力自检（供前端判断环境）
   Siren.capabilities = {
     audioContext: !!(global.AudioContext || global.webkitAudioContext),
     getUserMedia: !!(global.navigator && global.navigator.mediaDevices &&
       typeof global.navigator.mediaDevices.getUserMedia === 'function'),
-    localStorage: Siren.Store ? Siren.Store.available : false
+    localStorage: Siren.Store ? Siren.Store.localStorageAvailable : false
   };
 })(typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {}));
