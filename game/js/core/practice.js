@@ -3,11 +3,11 @@
  * 依据：docs/04-v2-修改意见.md §4 与附录审查第 2、11、18 条。
  *
  * 五组练习，每组对准一个"为什么过不去"：
- *   find    找到第一个音   先随便哼一个舒服的音；她唱一个长音，你哼同一个（要对准，只允许差整八度）
- *   steps   一步一步走     级进
- *   leaps   跳过去         跳进，逐级拉宽（音程唱小）
- *   ladder  爬梯子         同一个音型升 1、3、5 再降 2、4 个半音；往上第一次唱不好就转去往下
- *   memory  记更长         3 → 5 → 7 个音
+ *   find    单音   先随便哼一个舒服的音；她唱一个长音，你哼同一个（要对准，只允许差整八度）
+ *   steps   音阶   五音音阶上下行
+ *   ladder  音域   同一个音型升 1、3、5 再降 2、4 个半音；往上第一次唱不好就转去往下
+ *   leaps   音程   三度、五度、八度
+ *   memory  旋律   3 → 5 → 7 个音的旋律模唱
  *
  * 规则：一步的分数 ≥ 60 进入下一步；否则再来一遍，**最多 3 遍，第 3 遍后直接放行**（练习不卡人）。
  * 爬梯子每一级只唱一遍。不给玩家看任何分数或音域数字。
@@ -25,13 +25,23 @@
   var MAX_TRIES = 3;
   var SIREN_LO = 57;   // 她唱的音区：长音放在 A3 起的这一个八度里，练习主音再低 2 个半音
 
+  // 按顺序解锁：单音 → 音阶 → 音域 → 音程 → 旋律。
+  // 音域唱的还是音阶的 1 2 3 2 1，只是一级级换调，紧接音阶；三组的最高音也由低到高（主音上 7、9、12 个半音）。
   var EXERCISES = [
     { id: 'find', learnsRange: true },
     { id: 'steps' },
-    { id: 'leaps' },
     { id: 'ladder', learnsRange: true },
+    { id: 'leaps' },
     { id: 'memory' }
   ];
+
+  /** 第一组总是开着；之后每组要先做完上一组 */
+  function unlocked(id, isDone) {
+    for (var i = 0; i < EXERCISES.length; i += 1) {
+      if (EXERCISES[i].id === id) return i === 0 || !!isDone(EXERCISES[i - 1].id);
+    }
+    return false;
+  }
 
   /** 把任意 MIDI 折进 [lo, lo + 12) 这个八度里 */
   function foldInto(midi, lo) {
@@ -171,6 +181,7 @@
 
   Siren.Practice = {
     EXERCISES: EXERCISES,
+    unlocked: unlocked,
     create: create,
     itemsFor: itemsFor,
     tonicFor: tonicFor,

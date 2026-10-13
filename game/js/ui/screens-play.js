@@ -1,4 +1,4 @@
-/* 塞壬的小把戏 —— 前端：screens-play.js（唱歌 / 练习、哼一声、结尾开船）*/
+/* 塞壬的小把戏 —— 前端：screens-play.js（唱歌 / 练习 / 第一次的跟唱引导、结尾开船）*/
 (function (global) {
   'use strict';
 
@@ -19,7 +19,7 @@
 
   var P = {
     kind: null, song: null, exercise: null, prev: null, cur: null, mix: 1, stageIdx: 0,
-    label: null, firstTime: false, vg: 0, done: null, lo: 60, hi: 72, lastEmit: -1, lastPhrase: -1
+    label: null, firstTime: false, vg: 0, done: null, lo: 60, hi: 72, lastEmit: -1, lastPhrase: -1, next: null, from: 'select'
   };
 
   Session.on('note', function (e) {
@@ -40,10 +40,10 @@
     } else if (f.kind === 'practice' && App().name === 'play') {
       P.done = { at: App().clock, learned: f.learnedRange, exercise: f.exercise };
       Audio.sfx('reveal');
-    } else if (f.kind === 'hum' && App().name === 'hum') {
-      H.result = f.midi > 0 ? 'heard' : 'not';
-      H.at = App().clock;
-      if (f.midi > 0) Audio.sfx('great');
+    } else if (f.kind === 'guide' && App().name === 'play') {
+      // 引导就一句：唱完直接进玩家点的那首歌 / 那组练习
+      Progress.setOnboarded();
+      if (P.next) P.next();
     }
   });
 
@@ -87,8 +87,12 @@
       P.vg = 0;
       P.lastEmit = -1;
       P.lastPhrase = -1;
-      P.firstTime = P.kind === 'song' && !Progress.anySongPlayed();
-      if (P.kind === 'song') {
+      P.firstTime = (P.kind === 'song' && !Progress.anySongPlayed()) || P.kind === 'guide';
+      P.next = p.next || null;
+      P.from = p.from === 'practice' ? 'practice' : 'select';
+      if (P.kind === 'guide') {
+        Session.startGuide();
+      } else if (P.kind === 'song') {
         var r = Music.songRange(P.song);
         var shift = Progress.songShift(P.song);
         P.lo = r.lo + shift;
@@ -106,8 +110,8 @@
       var st = Session.getState();
       if (st.phase === 'idle') return;
 
-      // 练习的音高范围每句不同
-      if (P.kind === 'practice' && st.notes && st.notes.length && st.phraseIdx !== P.lastPhrase) {
+      // 练习、引导的音高范围每句不同
+      if (P.kind !== 'song' && st.notes && st.notes.length && st.phraseIdx !== P.lastPhrase) {
         var lo = 999;
         var hi = -999;
         st.notes.forEach(function (n) { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); });
@@ -132,7 +136,7 @@
           }
         }
       }
-      var rec = !st.paused && (st.phase === 'sing' || st.phase === 'countin' || st.phase === 'hum');
+      var rec = !st.paused && st.mic && (st.phase === 'sing' || st.phase === 'countin' || st.phase === 'hum');
       var face = singing && !st.paused ? 'sing' : rec ? 'listen' : 'calm';
       if (rec) P.vg = Math.max(P.vg * Math.pow(0.3, dt), st.level || 0);
       else P.vg *= Math.pow(0.3, dt);
@@ -141,7 +145,7 @@
       Gfx.drawParts();
 
       // 顶栏：暂停、标题、进度点
-      var title = P.kind === 'song' ? UI.L(P.song.title) : t_('ex_' + P.exercise);
+      var title = P.kind === 'song' ? UI.L(P.song.title) : P.kind === 'guide' ? t_('guideTitle') : t_('ex_' + P.exercise);
       UI.topBar(title, function () { Session.pause(); }, { pause: true });
       var count = st.phraseCount;
       var dw = Math.min(9, Math.floor(120 / Math.max(1, count)));
@@ -276,7 +280,7 @@
     var g = Gfx.ctx();
     var W = Gfx.W();
     var L = Gfx.L;
-    var rec = !st.paused && (st.phase === 'sing' || st.phase === 'hum' || (st.phase === 'countin' && st.tap));
+    var rec = !st.paused && st.mic && (st.phase === 'sing' || st.phase === 'hum');
     var cx = W / 2;
     var cy = L.micY;
     if (rec) {
@@ -289,9 +293,6 @@
     Gfx.disc(g, cx, cy, 16, C.INK);
     Gfx.disc(g, cx, cy, 15, rec ? C.CORAL : C.NAVY_L);
     if (rec) Gfx.spr(g, 'i_mic', cx - 5, cy - 7); else Gfx.spr(g, 'i_note2', cx - 5, cy - 5);
-    if (st.tap && !st.paused && (st.phase === 'sing' || st.phase === 'countin')) {
-      UI.hit('tapdisc', cx - 22, cy - 22, 44, 44, function () { Session.tap(); }, { silent: true });
-    }
   }
 
   function captions(st, t) {
@@ -335,8 +336,6 @@
         }
       }
     }
-    // 点按提示放在档位标签（py − 14 往上飘）的上面，不叠在一起
-    if (st.tap && st.phase === 'sing' && st.singT >= 450) Gfx.text(g, t_('tapHint'), W / 2, py - 42, { c: C.CREAM, a: 'c', o: C.INK });
     if (st.phase === 'hum') {
       Gfx.text(g, t_('humTitle'), W / 2, py - 44, { c: C.GOLD, s: 2, a: 'c', o: C.INK, sh: C.INK });
       Gfx.text(g, t_('humHint'), W / 2, py - 16, { c: C.CREAM, a: 'c', o: C.INK });
@@ -356,7 +355,7 @@
     var bw = W - 72;
     UI.btn('resume', 36, y + 32, bw, 24, t_('resume'), function () { Session.resume(); }, { primary: true });
     UI.btn('restart', 36, y + 62, bw, 24, t_('restart'), function () { P.lastPhrase = -1; Session.restart(); });
-    UI.btn('quit', 36, y + 92, bw, 24, t_('quit'), function () { App().go(P.kind === 'song' ? 'select' : 'practice'); });
+    UI.btn('quit', 36, y + 92, bw, 24, t_('quit'), function () { App().go(P.kind === 'song' ? 'select' : P.kind === 'guide' ? P.from : 'practice'); });
     UI.setBack(function () { Session.resume(); });
   }
 
@@ -370,64 +369,20 @@
     UI.block();
     var msg = P.done.learned ? t_('learnedKey') : t_('exDone');
     var lines = Gfx.wrap(msg, 128);
-    var h = 40 + lines.length * 14 + 64;
+    var list = Siren.Practice.EXERCISES;
+    var nextEx = null;
+    for (var e = 0; e < list.length - 1; e += 1) if (list[e].id === P.done.exercise) nextEx = list[e + 1].id;
+    var h = 40 + lines.length * 14 + (nextEx ? 64 : 34);
     var y = Math.round((H - h) / 2);
     Gfx.panel(g, 18, y, W - 36, h, 8, C.NAVY, C.GOLD, C.INK);
     Gfx.sprT(g, 'i_check', W / 2 - 4, y + 12, C.GOLD);
     for (var i = 0; i < lines.length; i += 1) Gfx.text(g, lines[i], W / 2, y + 26 + i * 14, { c: C.CREAM, a: 'c' });
     var locked = age < 0.6;
-    UI.btn('moreEx', 30, y + h - 62, W - 60, 24, t_('moreEx'), function () { App().go('practice'); }, { locked: locked, primary: true });
-    UI.btn('toSongs', 30, y + h - 32, W - 60, 24, t_('toSongs'), function () { App().go('select'); }, { locked: locked });
+    if (nextEx) UI.btn('moreEx', 30, y + h - 62, W - 60, 24, t_('moreEx'), function () { App().startPractice(nextEx); }, { locked: locked, primary: true });
+    UI.btn('toSongs', 30, y + h - 32, W - 60, 24, t_('toSongs'), function () { App().go('select'); }, { locked: locked, primary: !nextEx });
     UI.setBack(function () { App().go('practice'); });
     if (Math.random() < 0.15) Gfx.emit({ k: 'spark', x: 20 + Math.random() * 140, y: y - 4 + Math.random() * 10, life: 0.6, c: C.GOLD });
   }
-
-  // ================================================================ 哼一声试试（第一次唱之前）
-
-  var H = { next: null, result: null, at: 0, from: 'select' };
-
-  Screens.hum = {
-    enter: function (p) {
-      H.next = p.next;
-      H.from = p.from === 'practice' ? 'practice' : 'select';
-      H.result = null;
-      Session.startHum();
-    },
-    onHide: function () { Session.abort(); Session.releaseMic(); H.result = 'not'; },
-    draw: function (t) {
-      var g = Gfx.ctx();
-      var W = Gfx.W();
-      var L = Gfx.L;
-      var st = Session.getState();
-      Gfx.world(st.phase === 'hum' ? 'listen' : 'calm', t, null, Gfx.STAGES[0], 1, Math.min(0.8, (st.level || 0) * 0.8));
-      Gfx.drawParts();
-      UI.topBar(null, function () { App().go(H.from); });
-      var py = L.panelY;
-      Gfx.panel(g, 8, py, 164, 62, 8, C.NAVY, C.NAVY_LL, C.INK);
-      if (!H.result) {
-        Gfx.text(g, t_('humTitle'), W / 2, py - 44, { c: C.GOLD, s: 2, a: 'c', o: C.INK, sh: C.INK });
-        Gfx.text(g, t_('humHint'), W / 2, py - 16, { c: C.CREAM, a: 'c', o: C.INK });
-        if (st.phase === 'hum') humTrace(st, py);
-        micDisc(st.phase === 'hum' ? st : { phase: 'idle', level: 0 }, t);
-        return;
-      }
-      var heard = H.result === 'heard';
-      Gfx.text(g, Gfx.fit(heard ? t_('humHeard') : t_('humNot'), W - 16), W / 2, py - 30, { c: heard ? C.GOLD : C.CREAM, a: 'c', o: C.INK });
-      if (heard && Math.random() < 0.2) Gfx.emit({ k: 'heart', x: L.sirenX + 92 + Math.random() * 16, y: L.sirenY + 50, vy: -14, life: 1.2, ph: Math.random() * 6 });
-      var locked = t - H.at < 0.3;
-      if (heard) {
-        UI.btn('humgo', 30, py + 18, W - 60, 26, t_('go'), function () { Progress.setOnboarded(); H.next(); }, { primary: true, locked: locked });
-      } else {
-        UI.btn('humagain', 16, py + 18, 72, 26, t_('tryAgain'), function () {
-          H.result = null;
-          // 切过后台时麦克风已释放：先拿回来（这一下就是手势）
-          Session.requestMic().then(function () { if (App().name === 'hum') Session.startHum(); });
-        }, { primary: true, locked: locked });
-        UI.btn('humskip', 92, py + 18, 72, 26, t_('skip'), function () { Progress.setOnboarded(); H.next(); }, { locked: locked });
-      }
-    },
-    back: function () { App().go(H.from); }
-  };
 
   // ================================================================ 结尾：一艘船循着歌声开过来
 

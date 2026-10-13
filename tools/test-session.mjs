@@ -220,7 +220,7 @@ async function untilPhase(S, clock, pred, maxMs = 200000) {
   check('只有第一次的「哼一声」：唱歌不移调', !S.Progress.keyKnown() && S.Progress.songShift(S.SONGS[0]) === 0);
 }
 
-// ---------------------------------------------------------------- 6. 没有麦克风：点按
+// ---------------------------------------------------------------- 6. 没有麦克风：照常唱，每个音都是 Miss
 {
   const { S, clock, events } = await world();
   // 不注入假麦克风，也没有 getUserMedia → requestMic 失败
@@ -228,17 +228,87 @@ async function untilPhase(S, clock, pred, maxMs = 200000) {
   check('没有麦克风：requestMic 返回 false', ok === false && S.Session.micState() === 'denied');
   const song = S.SONGS.find((s) => s.id === 'mary');
   S.Session.startSong(song);
-  let tapped = 0;
-  for (let i = 0; i < 3000 && !events.find((e) => e.type === 'finish'); i += 1) {
-    const st = S.Session.getState();
-    if ((st.phase === 'sing' || st.phase === 'countin') && st.tap) {
-      const next = st.notes.find((n, idx) => st.tiers[idx] === undefined && Math.abs(st.singT - (n.startMs + 60)) < 30);
-      if (next) { S.Session.tap(); tapped += 1; }
-    }
-    await clock.advance(25);
-  }
+  await clock.advance(200000);
   const notes = events.filter((e) => e.type === 'note');
-  check('点按：跟着节奏点就有 Perfect', notes.filter((e) => e.p.tier === 'perfect').length >= notes.length - 2, `${notes.filter((e) => e.p.tier === 'perfect').length}/${notes.length}，点了 ${tapped} 下`);
+  const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
+  const total = song.phrases.reduce((a, p) => a + S.Music.parsePhrase(p).filter((n) => n.rel !== null).length, 0);
+  check('没有麦克风：每个音都是 Miss', notes.length === total && notes.every((e) => e.p.tier === 'miss'), `${notes.length}/${total}`);
+  check('没有麦克风：不走「她再唱一遍」，唱完照常来船', listens === song.phrases.length && !!events.find((e) => e.type === 'finish' && e.p.ship), `听了 ${listens} 遍`);
+}
+
+// ---------------------------------------------------------------- 6b. 第一次的跟唱引导：她唱一句、你跟一句就结束
+{
+  const { S, clock, events } = await world();
+  S.Session._setMicStub(singer(S));
+  S.Session.startGuide();
+  await clock.advance(20000);
+  const fin = events.find((e) => e.type === 'finish');
+  const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
+  check('引导：一句就结束', fin && fin.p.kind === 'guide' && listens === 1, `听了 ${listens} 遍`);
+  check('引导：有逐音档位，不抽船、不记进度', events.some((e) => e.type === 'note') && !S.Progress.anySongPlayed() && S.Progress.collectedCount() === 0);
+}
+{
+  const { S, clock, events } = await world();
+  S.Session._setMicStub(singer(S, { quietPhrase: () => true }));
+  S.Session.startGuide();
+  await clock.advance(40000);
+  const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
+  check('引导里没出声：她再唱，最多两次，然后结束', listens === 3 && !!events.find((e) => e.type === 'finish'), `听了 ${listens} 遍`);
+}
+
+// ---------------------------------------------------------------- 6c. 暂停不放麦克风；继续 / 重新开始不再重新打开
+{
+  const clock = makeClock();
+  const audio = makeAudioStub(clock);
+  let opened = 0;
+  let stopped = 0;
+  const navigator = { mediaDevices: { getUserMedia: async () => { opened += 1; return { getTracks: () => [{ stop() { stopped += 1; } }] }; } } };
+  const S = loadCore(FILES, { AudioContext: audio.FakeAudioContext, navigator });
+  S.Session._setClock(clock);
+  await S.Session.init();
+  const ok = await S.Session.requestMic();
+  S.Session.startSong(S.SONGS.find((s) => s.id === 'mary'));
+  await clock.advance(4000);
+  S.Session.pause();
+  const keptOnPause = S.Session.micOpen() && stopped === 0;
+  S.Session.resume();
+  await clock.advance(3000);
+  S.Session.pause();
+  S.Session.restart();
+  await clock.advance(3000);
+  check('暂停时麦克风还开着；继续、重新开始都不再打开第二次', ok && keptOnPause && opened === 1 && stopped === 0, `打开 ${opened} 次，关 ${stopped} 次`);
+  S.Session.releaseMic();
+  check('releaseMic：麦克风关掉', !S.Session.micOpen() && stopped === 1);
+}
+
+// ---------------------------------------------------------------- 6d. 音频：切尾音不重建混响，锁屏后 interrupted 也能恢复
+{
+  const { S, clock } = await world();
+  const c = S.Audio.ensureAudio();
+  S.Audio.playPhrase([{ midi: 60, startMs: 0, durationMs: 400 }]);
+  S.Audio.stopPlayback();
+  check('切尾音：湿声关掉，等下一个音再开', S.Audio.stats().wetOpen === false);
+  S.Audio.playPhrase([{ midi: 62, startMs: 0, durationMs: 400 }]);
+  check('下一个音：湿声打开', S.Audio.stats().wetOpen === true);
+  c.state = 'interrupted';
+  let resumed = 0;
+  const orig = c.resume.bind(c);
+  c.resume = () => { resumed += 1; return orig(); };
+  S.Audio.kick(true);
+  check('interrupted（iOS 锁屏）：点一下就 resume', resumed === 1 && c.state === 'running');
+  let resets = 0;
+  S.Audio.onReset(() => { resets += 1; });
+  c.state = 'interrupted';
+  c.resume = () => Promise.reject(new Error('not allowed'));
+  S.Audio.kick(true);
+  const t0 = Date.now();
+  while (Date.now() - t0 < 650) { /* 等 0.6 秒 */ }
+  S.Audio.kick(true);
+  const c2 = S.Audio.getAudioContext();
+  check('恢复不了：下一次点击重建音频环境并通知', c2 !== c && c.state === 'closed' && resets === 1);
+  S.Audio.hold();
+  S.Audio.kick(true);
+  check('切后台挂起后，回来点一下就解除挂起（容器没发 visibilitychange 也行）', S.Audio.stats().held === false);
 }
 
 // ---------------------------------------------------------------- 7. 抽船保底与清除进度

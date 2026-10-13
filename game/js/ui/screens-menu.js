@@ -16,32 +16,89 @@
 
   // ================================================================ 首页
 
+  // 她在首页也一句一句地唱（和唱歌时同一套表情与飘出来的音符，只有动作没有声音）。
+  // [开口时刻, 时长]（秒），一轮 TUNE_LEN 秒
+  var TUNE = [[0, 0.38], [0.45, 0.38], [0.9, 0.38], [1.35, 0.38], [1.8, 0.8], [3.3, 0.38], [3.75, 0.38], [4.2, 0.9]];
+  var TUNE_LEN = 6.4;
+  var tuneSeen = -1;
+
+  function titleFace(t) {
+    var L = Gfx.L;
+    var cyc = Math.floor(t / TUNE_LEN);
+    var u = t - cyc * TUNE_LEN;
+    var face = 'calm';
+    for (var i = 0; i < TUNE.length; i += 1) {
+      var n = TUNE[i];
+      if (u < n[0]) break;
+      var id = cyc * TUNE.length + i;
+      if (id > tuneSeen) {
+        tuneSeen = id;
+        if (u - n[0] < 0.2 && !Gfx.reduceMotion) Gfx.emit({ k: 'note', x: L.sirenX + 96 + Math.random() * 12, y: L.sirenY + 44, vy: -16, vx: 5, life: 1.5, ph: Math.random() * 6, n2: i % 2 });
+      }
+      if (u < n[0] + n[1] * 0.8) face = 'sing';
+    }
+    return face;
+  }
+
+  /** 首页的四个选项。三种画法先放着比较（?btn=gold|grid|text），选定后只留一种 */
+  function titleMenu(items) {
+    var W = Gfx.W();
+    var H = Gfx.H();
+    var L = Gfx.L;
+    var look = UI.variant('btn');
+    var k;
+    if (look === 'grid') {
+      var gw = 72;
+      var gh = 24;
+      var gx = Math.round((W - 2 * gw - 10) / 2);
+      var gy = Math.max(L.rockFoot + 8, H - 2 * gh - 10 - 18);
+      for (k = 0; k < items.length; k += 1) {
+        UI.btn('m' + k, gx + (k % 2) * (gw + 10), gy + Math.floor(k / 2) * (gh + 10), gw, gh, t_(items[k][0]), items[k][1], { primary: k === 0, look: 'gold' });
+      }
+    } else if (look === 'text') {
+      // 纯文字：两倍字号，矮屏上行距跟着收
+      var th = Math.max(26, Math.min(32, Math.floor((H - L.rockFoot - 10) / items.length)));
+      var ty = H - items.length * th - 8;
+      for (k = 0; k < items.length; k += 1) {
+        UI.btn('m' + k, Math.round(W / 2 - 60), ty + k * th, 120, th, t_(items[k][0]), items[k][1], { primary: k === 0, look: 'text', s: 2 });
+      }
+    } else {
+      // gold（默认）/ navy（原来的）：竖排，按钮矮一点、间距大一点，不那么挤
+      var bw = 96;
+      var bh = 20;
+      var gap = 9;
+      var top = Math.max(L.rockFoot + 6, H - items.length * (bh + gap) - 8);
+      for (k = 0; k < items.length; k += 1) {
+        UI.btn('m' + k, Math.round((W - bw) / 2), top + k * (bh + gap), bw, bh, t_(items[k][0]), items[k][1], { primary: k === 0, look: look === 'navy' ? null : 'gold' });
+      }
+    }
+  }
+
   Screens.title = {
     enter: function () {},
     draw: function (t) {
       var g = Gfx.ctx();
       var W = Gfx.W();
-      var H = Gfx.H();
       var L = Gfx.L;
       var st = Gfx.STAGES[0];
-      var blink = Math.floor(t / 3.3) % 4 === 3 && (t % 3.3) < 0.18;
       // 远处的小船：最近来过的 3 艘（审查第 9 条）；还没有就随便放 3 个剪影
       var rec = Progress.recent();
       var far = rec.length ? rec : ['tug', 'sail', 'ferry'];
-      Gfx.world(blink ? 'listen' : 'calm', t, null, st, 1, 0, function (s) {
+      Gfx.world(titleFace(t), t, null, st, 1, 0, function (s) {
         var gg = Gfx.ctx();
         for (var i = 0; i < far.length; i += 1) {
           var bx = ((30 + i * 67 + t * (2.2 + i * 0.7)) % (W + 40)) - 20;
           Gfx.sprT(gg, 's12_' + far[i], bx, L.hz - 8 + (i === 1 ? 0 : 1), s.far, 'mul');
         }
       });
+      Gfx.drawParts();
 
-      // 标题：中文一行逐字起伏，英文两行（行距收紧，副标题不压到她的头发：发顶约在 sirenY + 12）
+      // 标题：中文一行逐字起伏，英文两行（行距收紧，不压到她的头发：发顶约在 sirenY + 12）
       var title = t_('title');
       var en = Progress.lang() === 'en';
       var lines = en ? ["Siren's", 'Little Trick'] : [title];
       var lh = en ? 24 : 28;
-      var y0 = en ? Math.max(2, Math.min(8, L.sirenY + 12 - 14 - 2 * lh - 2)) : 30;
+      var y0 = en ? Math.max(2, Math.min(8, L.sirenY + 12 - 2 * lh - 2)) : 30;
       for (var li = 0; li < lines.length; li += 1) {
         var s = lines[li];
         var x = Math.round((W - Gfx.tw(s, 2)) / 2);
@@ -51,26 +108,14 @@
           x += Gfx.tw(s[i], 2);
         }
       }
-      var ty = y0 + lines.length * lh + (en ? 2 : 4);
-      var tl = Gfx.wrap(t_('tagline'), W - 24);
-      for (var tli = 0; tli < tl.length; tli += 1) Gfx.text(g, tl[tli], W / 2, ty + tli * 14, { c: '#fff6ec', a: 'c', o: C.INK });
       if (Math.floor(t * 1.2) % 3 === 0 && Math.random() < 0.3) Gfx.emit({ k: 'spark', x: 14 + Math.random() * 150, y: 24 + Math.random() * 40, life: 0.5, c: '#fff6d0' });
-      Gfx.drawParts();
 
-      // 四个同款选项
-      var bw = 104;
-      var bh = 22;
-      var gap = 6;
-      var top = Math.max(L.rockFoot + 4, H - 4 * (bh + gap) - 6);
-      var items = [
+      titleMenu([
         ['start', function () { App().go('select'); }],
         ['practice', function () { App().go('practice'); }],
         ['codex', function () { App().go('codex', { from: 'title' }); }],
         ['settings', function () { App().go('settings'); }]
-      ];
-      for (var k = 0; k < items.length; k += 1) {
-        UI.btn('m' + k, Math.round((W - bw) / 2), top + k * (bh + gap), bw, bh, t_(items[k][0]), items[k][1], { primary: k === 0 });
-      }
+      ]);
     },
     back: function () {}
   };
@@ -171,7 +216,6 @@
 
       // 顶栏画在列表上面
       UI.topBar(null, function () { App().go('title'); });
-      if (Progress.keyKnown()) UI.pill(W - 8 - (Gfx.tw(t_('yourKey')) + 10), 10, t_('yourKey'), C.TEAL, C.INK);
     },
     back: function () { App().go('title'); }
   };
@@ -261,138 +305,199 @@
 
   // ================================================================ 练习列表
 
+  function practiceUnlocked(id) { return Siren.Practice.unlocked(id, Progress.practiceDone); }
+
   Screens.practice = {
     enter: function () {},
     draw: function (t) {
-      var g = Gfx.ctx();
-      var W = Gfx.W();
       var H = Gfx.H();
       Gfx.backdrop(Gfx.DAY, t);
       Gfx.dim(0.35);
       UI.topBar(t_('practiceTitle'), function () { App().go('title'); });
       var list = Siren.Practice.EXERCISES;
-      var ch = 44;
-      var top = Math.max(36, Math.round((H - list.length * (ch + 6)) / 2));
+      var ch = 32;
+      var gap = 8;
+      var top = Math.max(40, Math.round((H - list.length * (ch + gap)) / 2));
       for (var i = 0; i < list.length; i += 1) {
         (function (ex, y) {
-          UI.card('ex' + ex.id, 8, y, 164, ch, function () { App().startPractice(ex.id); }, function (x, yy) {
+          var open = practiceUnlocked(ex.id);
+          UI.card('ex' + ex.id, 8, y, 164, ch, open ? function () { App().startPractice(ex.id); } : null, function (x, yy) {
             var gg = Gfx.ctx();
-            Gfx.text(gg, (i + 1) + '  ' + t_('ex_' + ex.id), x + 9, yy + 6, { c: C.CREAM });
-            Gfx.text(gg, Gfx.fit(t_('exb_' + ex.id), 140), x + 9, yy + 24, { c: '#b9c4ff' });
-            if (Progress.practiceDone(ex.id)) Gfx.sprT(gg, 'i_check', x + 148, yy + 8, C.GOLD);
-          });
-        })(list[i], top + i * (ch + 6));
+            Gfx.text(gg, t_('ex_' + ex.id), x + 12, yy + 9, { c: open ? C.CREAM : '#5a66b8' });
+            if (!open) UI.lock(x + 146, yy + 11);
+            else if (Progress.practiceDone(ex.id)) Gfx.sprT(gg, 'i_check', x + 144, yy + 13, C.GOLD);
+          }, open ? null : { fill: '#1f2660', line: '#3a4490' });
+        })(list[i], top + i * (ch + gap));
       }
-      if (Progress.keyKnown()) UI.pill(W - 8 - (Gfx.tw(t_('yourKey')) + 10), 10, t_('yourKey'), C.TEAL, C.INK);
     },
     back: function () { App().go('title'); }
   };
 
   // ================================================================ 设置
 
-  var set = { page: 'main', scroll: { y: 0, v: 0 }, confirm: false };
+  // open：展开的是哪一项（更新日志 / 关于，一次只开一项）；drop：语言下拉框；pop：麦克风弹窗
+  var set = { open: null, drop: false, pop: null };
 
-  function row(id, y, label, value, act) {
-    UI.card(id, 8, y, 164, 30, act, function (x, yy) {
-      var g = Gfx.ctx();
-      Gfx.text(g, label, x + 9, yy + 8, { c: C.CREAM });
-      if (value === '>') Gfx.sprT(g, 'i_next', x + 150, yy + 11, '#b9c4ff');
-      else if (value) Gfx.text(g, Gfx.fit(value, 156 - 9 - Gfx.tw(label) - 10), x + 156, yy + 8, { c: '#b9c4ff', a: 'r' });
-    });
+  function micGranted() { return Siren.Session.micState() === 'granted'; }
+
+  /** 点麦克风：已授权 → 告诉玩家去哪里关；未授权 → 直接弹浏览器的授权框（被浏览器拒绝过就告诉玩家去哪里开） */
+  function micTap() {
+    if (micGranted()) { set.pop = 'off'; return; }
+    if (Siren.Session.micPermission() === 'denied') { set.pop = 'blocked'; return; }
+    App().askMic(function (ok) { if (!ok && App().name === 'settings') set.pop = 'blocked'; });
   }
 
-  function micLabel() {
-    var s = Siren.Session.micState();
-    if (s === 'granted') return t_('micOk');
-    if (s === 'denied') return t_('micNo');
-    return t_('micUnknown');
+  function logBody(w) {
+    var log = Siren.CHANGELOG;
+    var out = [];
+    for (var v = 0; v < log.length; v += 1) {
+      var items = UI.lang() === 'en' ? log[v].en : log[v].zh;
+      out.push({ head: 'v' + log[v].version, date: UI.L(log[v].date), items: items.map(function (s2) { return Gfx.wrap(s2, w - 30); }) });
+    }
+    return out;
+  }
+  function logHeight(body) {
+    var h = 0;
+    body.forEach(function (b) { h += 18; b.items.forEach(function (it) { h += it.length * 14 + 2; }); h += 6; });
+    return h;
+  }
+
+  /**
+   * 画设置的各项，返回占用的高度。x、w：卡片的左边和宽度。
+   * 语言下拉框在最后单独画（盖在下面几项上面），所以这里把它的位置记下来。
+   */
+  function settingsRows(x, y0, w) {
+    var g = Gfx.ctx();
+    var grouped = UI.variant('group') !== '0';
+    var y = y0;
+    var gap = 6;
+    var langY = 0;
+    function row(id, label, value, act, extra) {
+      var bodyH = extra ? extra.h : 0;
+      UI.card(id, x, y, w, 30 + bodyH, null, function (cx, cy) {
+        Gfx.text(g, label, cx + 10, cy + 8, { c: C.CREAM });
+        if (value && value.caret !== undefined) {
+          if (value.text) Gfx.text(g, value.text, cx + w - 18, cy + 8, { c: '#b9c4ff', a: 'r' });
+          UI.caret(cx + w - 14, cy + 13, value.caret);
+        } else if (value) Gfx.text(g, Gfx.fit(value, w - 30 - Gfx.tw(label)), cx + w - 10, cy + 8, { c: '#b9c4ff', a: 'r' });
+        if (extra) {
+          g.fillStyle = C.NAVY_LL; g.fillRect(cx + 8, cy + 29, w - 16, 1);
+          extra.draw(cx, cy + 34);
+        }
+      });
+      UI.hit(id, x, y, w, 30, act);
+      y += 30 + bodyH + gap;
+    }
+
+    row('sfx', t_('sfx'), Progress.sfxOff() ? t_('off') : t_('on'), function () {
+      Progress.setSfxOff(!Progress.sfxOff());
+      Audio.setSfxMuted(Progress.sfxOff());
+    });
+    langY = y;
+    var cur = Siren.LANGS.filter(function (l) { return l.id === Progress.lang(); })[0];
+    row('lang', t_('language'), { text: cur ? cur.name : '', caret: set.drop }, function () { set.drop = !set.drop; });
+    row('mic', t_('mic'), micGranted() ? t_('micOk') : t_('micNo'), micTap);
+    if (grouped) y += 8;
+
+    var lb = logBody(w);
+    row('log', t_('changelog'), { caret: set.open === 'log' }, function () { set.open = set.open === 'log' ? null : 'log'; },
+      set.open === 'log' ? { h: logHeight(lb) + 4, draw: function (cx, cy) {
+        lb.forEach(function (b) {
+          Gfx.text(g, b.head, cx + 10, cy, { c: C.CREAM });
+          Gfx.text(g, b.date, cx + w - 10, cy, { c: C.DIM, a: 'r' });
+          cy += 18;
+          b.items.forEach(function (it) {
+            g.fillStyle = C.CORAL; g.fillRect(cx + 12, cy + 6, 3, 3);
+            for (var ln = 0; ln < it.length; ln += 1) Gfx.text(g, it[ln], cx + 20, cy + ln * 14, { c: '#d6dcff' });
+            cy += it.length * 14 + 2;
+          });
+          cy += 6;
+        });
+      } } : null);
+    row('about', t_('about'), { caret: set.open === 'about' }, function () { set.open = set.open === 'about' ? null : 'about'; },
+      set.open === 'about' ? { h: 54, draw: function (cx, cy) {
+        Gfx.text(g, t_('version'), cx + 10, cy, { c: C.DIM });
+        Gfx.text(g, Siren.version, cx + w - 10, cy, { c: '#d6dcff', a: 'r' });
+        Gfx.text(g, t_('authors'), cx + 10, cy + 18, { c: C.DIM });
+        Gfx.text(g, t_('authorNames'), cx + 10, cy + 34, { c: C.CREAM });
+      } } : null);
+    return { h: y - gap - y0, langY: langY };
+  }
+
+  /** settingsRows 会占多高（小窗要先知道卡片多高） */
+  function settingsHeight(w) {
+    var h = 5 * 30 + 4 * 6 + (UI.variant('group') !== '0' ? 8 : 0);
+    if (set.open === 'log') h += logHeight(logBody(w)) + 4;
+    if (set.open === 'about') h += 54;
+    return h;
+  }
+
+  /** 语言下拉框：贴在语言那一行下面，右对齐 */
+  function langDrop(x, w, langY) {
+    var g = Gfx.ctx();
+    UI.block(function () { set.drop = false; });
+    var opts = Siren.LANGS;
+    var dw = 92;
+    var dx = x + w - dw;
+    var dy = langY + 30;
+    Gfx.panel(g, dx, dy, dw, opts.length * 22 + 6, 6, C.NAVY, C.NAVY_LL, C.INK);
+    for (var i = 0; i < opts.length; i += 1) {
+      (function (o, oy) {
+        var on = o.id === Progress.lang();
+        if (on) { g.fillStyle = C.NAVY_L; g.fillRect(dx + 3, oy, dw - 6, 20); }
+        Gfx.text(g, o.name, dx + 10, oy + 4, { c: on ? C.CREAM : '#b9c4ff' });
+        if (on) Gfx.sprT(g, 'i_check', dx + dw - 16, oy + 7, C.GOLD);
+        UI.hit('lang_' + o.id, dx + 3, oy, dw - 6, 20, function () { Progress.setLang(o.id); set.drop = false; });
+      })(opts[i], dy + 3 + i * 22);
+    }
+    UI.setBack(function () { set.drop = false; });
+  }
+
+  function micPopup() {
+    var close = function () { set.pop = null; };
+    if (set.pop === 'off') UI.popup(t_('micOffTitle'), t_('micOffBody'), [{ label: t_('ok'), act: close }], close);
+    else UI.popup(t_('micBlockedTitle'), t_('micBlockedBody'), [{ label: t_('ok'), act: close }], close);
   }
 
   Screens.settings = {
-    enter: function (p) { set.page = p.page || 'main'; set.confirm = false; set.scroll.y = 0; },
-    draw: function (t, dt) {
+    enter: function () {
+      set.open = null; set.drop = false; set.pop = null;
+      Siren.Session.refreshMic();
+    },
+    draw: function (t) {
       var g = Gfx.ctx();
       var W = Gfx.W();
       var H = Gfx.H();
-      g.drawImage(Gfx.dotBg(), 0, 0);
-
-      if (set.page === 'main') {
-        UI.topBar(t_('settingsTitle'), function () { App().go('title'); });
-        var y = 40;
-        row('sfx', y, t_('sfx'), Progress.sfxOff() ? t_('off') : t_('on'), function () {
-          Progress.setSfxOff(!Progress.sfxOff());
-          Audio.setSfxMuted(Progress.sfxOff());
-        });
-        y += 36;
-        row('lang', y, t_('language'), t_('langName'), function () { Progress.setLang(Progress.lang() === 'zh' ? 'en' : 'zh'); });
-        y += 36;
-        var micState = Siren.Session.micState();
-        row('mic', y, t_('mic'), micLabel(), micState === 'denied' ? function () { App().retryMic(); } : null);
-        y += 48;
-        row('log', y, t_('changelog'), '>', function () { set.page = 'log'; set.scroll.y = 0; });
-        y += 36;
-        row('about', y, t_('about'), '>', function () { set.page = 'about'; });
-        y += 48;
-        row('reset', y, t_('reset'), '', function () { set.confirm = true; });
-      } else if (set.page === 'log') {
-        UI.topBar(t_('changelog'), function () { set.page = 'main'; });
-        var top = 34;
-        var viewH = H - top - 6;
-        var blocks = [];
-        var total = 0;
-        var log = Siren.CHANGELOG;
-        for (var v = 0; v < log.length; v += 1) {
-          var items = UI.lang() === 'en' ? log[v].en : log[v].zh;
-          var wrapped = items.map(function (s) { return Gfx.wrap(s, 136); });
-          var h = 22 + wrapped.reduce(function (a, w) { return a + w.length * 14 + 4; }, 0);
-          blocks.push({ ver: log[v].version, date: UI.L(log[v].date), lines: wrapped, h: h });
-          total += h + 8;
-        }
-        var off = UI.scroller(set.scroll, top, viewH, total, dt);
-        g.save(); g.beginPath(); g.rect(0, top, W, viewH); g.clip();
-        var yy = top + 4 - off;
-        for (var b = 0; b < blocks.length; b += 1) {
-          var bl = blocks[b];
-          Gfx.panel(g, 8, yy, 164, bl.h, 6, C.PAPER, C.INK, C.INK);
-          Gfx.text(g, 'v' + bl.ver, 16, yy + 5, { c: C.PAPER_INK });
-          Gfx.text(g, bl.date, 164, yy + 5, { c: C.PAPER_DIM, a: 'r' });
-          var ly = yy + 24;
-          for (var it = 0; it < bl.lines.length; it += 1) {
-            g.fillStyle = C.CORAL; g.fillRect(16, ly + 6, 3, 3);
-            for (var ln = 0; ln < bl.lines[it].length; ln += 1) Gfx.text(g, bl.lines[it][ln], 24, ly + ln * 14, { c: C.PAPER_INK });
-            ly += bl.lines[it].length * 14 + 4;
-          }
-          yy += bl.h + 8;
-        }
-        g.restore();
-        UI.scrollbar(set.scroll);
-      } else if (set.page === 'about') {
-        UI.topBar(t_('about'), function () { set.page = 'main'; });
-        var ay = 46;
-        Gfx.text(g, t_('title'), W / 2, ay, { c: C.CREAM, a: 'c', o: C.INK });
-        Gfx.text(g, t_('version') + ' ' + Siren.version, W / 2, ay + 18, { c: '#b9c4ff', a: 'c' });
-        Gfx.panel(g, 8, ay + 42, 164, 44, 6, C.NAVY_L, C.NAVY_LL, C.INK);
-        Gfx.text(g, t_('authors'), 18, ay + 48, { c: '#b9c4ff' });
-        Gfx.text(g, t_('authorNames'), 18, ay + 64, { c: C.CREAM });
-        var pl = Gfx.wrap(t_('privacy'), 140);
-        for (var i = 0; i < pl.length; i += 1) Gfx.text(g, pl[i], W / 2, ay + 104 + i * 14, { c: '#d6dcff', a: 'c' });
-        var fl = Gfx.wrap(t_('fontCredit'), 150);
-        for (var j = 0; j < fl.length; j += 1) Gfx.text(g, fl[j], W / 2, H - 30 - (fl.length - 1 - j) * 14, { c: C.DIM, a: 'c' });
+      var back = function () { App().go('title'); };
+      var r;
+      var x;
+      var w;
+      if (UI.variant('set') === 'sheet') {
+        // 小窗：首页的海面还在后面，设置是浮在上面的一张卡片
+        Gfx.world('calm', t, null, Gfx.STAGES[0], 1, 0);
+        Gfx.dim(0.55);
+        UI.block(back);
+        x = 18;
+        w = W - 36;
+        var ph = 40 + settingsHeight(w) + 12;
+        var py = Math.max(10, Math.round((H - ph) / 2));
+        Gfx.panel(g, 10, py, W - 20, ph, 8, '#12173c', C.NAVY_LL, C.INK);
+        UI.hit('sheet', 10, py, W - 20, ph, function () {}, { silent: true });   // 点在卡片空白处不算点到外面
+        Gfx.text(g, t_('settingsTitle'), W / 2, py + 12, { c: C.CREAM, a: 'c' });
+        UI.btn('close', W - 34, py + 8, 18, 18, null, back, { icon: 'i_x' });
+        UI.setBack(back);
+        r = settingsRows(x, py + 36, w);
+      } else {
+        g.drawImage(Gfx.dotBg(), 0, 0);
+        UI.topBar(t_('settingsTitle'), back);
+        x = 8;
+        w = 164;
+        r = settingsRows(x, 40, w);
       }
-
-      if (set.confirm) {
-        Gfx.dim(0.7);
-        UI.block(function () { set.confirm = false; });
-        var cl = Gfx.wrap(t_('resetConfirm'), 136);
-        var chh = 26 + cl.length * 14 + 40;
-        var cy = Math.round((H - chh) / 2);
-        Gfx.panel(g, 14, cy, W - 28, chh, 8, C.NAVY, C.NAVY_LL, C.INK);
-        for (var c2 = 0; c2 < cl.length; c2 += 1) Gfx.text(g, cl[c2], W / 2, cy + 14 + c2 * 14, { c: C.CREAM, a: 'c' });
-        UI.btn('cno', 24, cy + chh - 34, 62, 24, t_('cancel'), function () { set.confirm = false; }, { primary: true });
-        UI.btn('cyes', 94, cy + chh - 34, 62, 24, t_('confirm'), function () { Progress.reset(); set.confirm = false; UI.toast(t_('resetDone'), 1.6); });
-        UI.setBack(function () { set.confirm = false; });
-      }
+      if (set.drop) langDrop(x, w, r.langY);
+      if (set.pop) micPopup();
     },
-    back: function () { App().go('title'); }
+    back: function () { App().go('title'); },
+    _ui: set   // 截图、测试用：直接设成「下拉框打开 / 某一项展开 / 弹窗」
   };
 })(typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {}));

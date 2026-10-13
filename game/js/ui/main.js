@@ -1,6 +1,6 @@
 /* 塞壬的小把戏 —— 前端：main.js（启动、主循环、切屏、弹层、返回键）
  *
- * 屏幕：title / select / play / hum / arrive / codex / practice / settings
+ * 屏幕：title / select / play / arrive / codex / practice / settings
  * 每个屏幕是 Siren.Screens[name] = { enter(params), draw(t, dt), back() }。
  */
 (function (global) {
@@ -45,73 +45,61 @@
     App.params = params || {};
     App.modal = null;
     Gfx.parts.length = 0;
-    // 离开唱歌相关的屏幕：停掉一切声音、释放麦克风（§2：手机上的麦克风指示灯要灭）
-    var singing = name === 'play' || name === 'hum';
-    if ((prev === 'play' || prev === 'hum') && !singing) Session.abort();
-    if (!singing) Session.releaseMic();
+    // 离开唱歌界面：停掉一切声音。麦克风不马上关——唱完一首接着换一首、再来一遍时，
+    // 手机不用每次都重新打开麦克风（每打开一次，系统或浏览器就会弹一次"正在使用麦克风"）。
+    // 不在唱歌界面待了 MIC_IDLE_MS 才关；切后台立刻关。
+    var singing = name === 'play';
+    if (prev === 'play' && !singing) Session.abort();
+    if (singing) cancelMicRelease(); else scheduleMicRelease();
     scr.enter(App.params, prev);
     guardHistory();
   };
 
-  // ---------------------------------------------------------------- 唱歌之前：麦克风与「哼一声」
+  // ---------------------------------------------------------------- 麦克风什么时候关
 
-  function needMicCard() {
-    return Siren.capabilities.getUserMedia && Session.micState() === 'unknown';
+  App.MIC_IDLE_MS = 45000;   // 离开唱歌界面多久之后关麦克风（测试里会改短）
+  var micTimer = null;
+  function cancelMicRelease() { if (micTimer) { global.clearTimeout(micTimer); micTimer = null; } }
+  function scheduleMicRelease() {
+    cancelMicRelease();
+    if (!Session.micOpen()) return;
+    micTimer = global.setTimeout(function () { micTimer = null; if (App.name !== 'play') Session.releaseMic(); }, App.MIC_IDLE_MS);
   }
 
+  // ---------------------------------------------------------------- 唱歌之前：麦克风与第一次的跟唱引导
+
   /**
-   * 拿麦克风（必须在点击里调用），拿不到就进点按模式。
-   * 等授权的时候玩家可能已经走开了（返回、去了设置）：那就放掉麦克风，不再往下走。
+   * 拿麦克风（必须在点击里调用）：没授权过就直接弹浏览器的授权框。拿不到也照常唱，每个音都算 Miss。
+   * 等授权的时候玩家可能已经走开了（返回、去了设置）：那就不再往下走。
    */
   function withMic(then) {
     var nav = App.nav;
     Session.requestMic().then(function (ok) {
-      if (App.nav !== nav || App.modal) {
-        if (App.name !== 'play' && App.name !== 'hum') Session.releaseMic();
-        return;
-      }
-      if (!ok && !App.deniedToast) { App.deniedToast = true; UI.toast(UI.t('micDenied'), 3.5); }
+      if (App.nav !== nav || App.modal) { if (App.name !== 'play') scheduleMicRelease(); return; }
+      if (!ok && !App.deniedToast) { App.deniedToast = true; UI.toast(UI.t('micNone'), 2.4); }
       then(ok);
     });
   }
 
-  function showMicCard(then) {
-    function ok() {
-      App.modal = null;
-      withMic(then);
-    }
-    // 卡片一出现回车就该是「好」，不必等下一帧画出按钮（按键事件可能比下一帧先到）
-    UI.setPrimary(ok);
+  /** 第一次唱之前：一张卡说清楚怎么玩 → 她唱一句、你跟一句 → 进玩家点的那首 */
+  function showGuideCard(go) {
+    function ok() { App.modal = null; go(); }
+    function close() { App.modal = null; }
+    UI.setPrimary(ok);   // 卡片一出现回车就是「试试」，不必等下一帧画出按钮
     App.modal = {
-      draw: function () {
-        var g = Gfx.ctx();
-        var W = Gfx.W();
-        var H = Gfx.H();
-        Gfx.dim(0.6);
-        UI.block();
-        var body = Gfx.wrap(UI.t('micBody'), 128);
-        var h = 66 + body.length * 14 + 34;
-        var y = Math.round((H - h) / 2);
-        Gfx.panel(g, 14, y, W - 28, h, 8, Gfx.C.NAVY, Gfx.C.NAVY_LL, Gfx.C.INK);
-        Gfx.disc(g, W / 2, y + 22, 13, Gfx.C.INK);
-        Gfx.disc(g, W / 2, y + 21, 12, Gfx.C.CORAL);
-        Gfx.spr(g, 'i_mic', W / 2 - 5, y + 14);
-        Gfx.text(g, UI.t('micTitle'), W / 2, y + 40, { c: Gfx.C.CREAM, a: 'c' });
-        for (var i = 0; i < body.length; i += 1) Gfx.text(g, body[i], W / 2, y + 58 + i * 14, { c: '#c6ccf5', a: 'c' });
-        UI.btn('micok', W / 2 - 40, y + h - 32, 80, 24, UI.t('ok'), ok, { primary: true });
-      }
+      draw: function () { UI.popup(UI.t('guideTitle'), UI.t('guideBody'), [{ label: UI.t('guideGo'), act: ok }], close); }
     };
   }
 
-  /** 第一次唱之前：要麦克风 → 哼一声试试 → 开始 */
   function beforeSinging(start) {
     var from = App.name;
-    function afterMic(ok) {
-      if (ok && !Progress.onboarded()) App.go('hum', { next: start, from: from });
-      else start();
+    if (!Progress.onboarded()) {
+      showGuideCard(function () {
+        withMic(function () { App.go('play', { kind: 'guide', next: start, from: from }); });
+      });
+      return;
     }
-    if (needMicCard()) showMicCard(afterMic);
-    else withMic(afterMic);
+    withMic(function () { start(); });
   }
 
   App.startSong = function (song) {
@@ -120,8 +108,12 @@
   App.startPractice = function (exId) {
     beforeSinging(function () { App.go('play', { kind: 'practice', exercise: exId }); });
   };
-  App.retryMic = function () {
-    withMic(function () { /* 设置页会读新的状态 */ });
+  /** 设置里点「未授权」：弹浏览器的授权框；拿到了也不留着（不在唱歌） */
+  App.askMic = function (done) {
+    Session.requestMic().then(function (ok) {
+      if (App.name !== 'play') scheduleMicRelease();
+      if (done) done(ok);
+    });
   };
 
   // ---------------------------------------------------------------- 返回键 / 侧滑（审查第 12 条，需真机验证）
@@ -148,17 +140,23 @@
     if (doc.hidden) {
       var scr = Siren.Screens[App.name];
       if (scr && scr.onHide) scr.onHide();
+      cancelMicRelease();
+      Session.releaseMic();  // 切后台：麦克风立刻关
       Audio.hold();          // 海浪、音效一起停；回来再响
       return;
     }
     if (unlocked) Audio.wake();
   });
+  // 有的容器切回来时不发 visibilitychange：页面重新拿到焦点 / 重新显示时也试着恢复
+  global.addEventListener('pageshow', function () { if (unlocked && !doc.hidden) Audio.wake(); });
+  global.addEventListener('focus', function () { if (unlocked && !doc.hidden) Audio.wake(); });
 
   // ---------------------------------------------------------------- 第一次点击：解锁声音
 
   var unlocked = false;
   function unlock() {
-    if (unlocked) { Audio.ensureAudio(); return; }
+    // 每次点击都是一次手势：音频没在跑（锁屏回来、被来电打断、iOS 的 interrupted）就在这里拉起来
+    if (unlocked) { Audio.kick(!doc.hidden); return; }
     unlocked = true;
     try {
       Audio.ensureAudio();
