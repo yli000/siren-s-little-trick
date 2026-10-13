@@ -103,34 +103,28 @@
     //   (b) CMND 的累加覆盖 τ=1..tauMax。规格书骨架只累加 tauMin..tauMax，
     //       导致 τ=tauMin 处 running 恰等于 d(tauMin)，归一化后恒为 1.0（对任何信号都是
     //       1.00000），既丢失物理意义，也让任何基于 τMin 的判据失效。
+    //
+    //   Step 1–3 合在一个循环里：CMND(τ) 只依赖 d(1..τ)，所以可以边算边找，
+    //   找到「第一个低于阈值的局部极小」并算出它右边一个点（插值要用）就停。
+    //   结果与先算满 τ=1..tauMax 再找完全相同；唱歌时 τ 多在 100–250，省掉一半以上的计算
+    //   （这段在主线程上每 50ms 跑一次，算满时会挤掉一帧画面）。
+    yin[0] = 1;
+    var running = 0;
+    var found = -1;
     for (var tau = 1; tau <= tauMax; tau++) {
       var sum = 0;
       for (var i = 0; i < limit; i++) {
         var d = buf[i] - buf[i + tau];
         sum += d * d;
       }
-      yin[tau] = sum;
-    }
-
-    // ---- Step 2: 累积均值归一化差分 CMND
-    yin[0] = 1;
-    var running = 0;
-    for (var t2 = 1; t2 <= tauMax; t2++) {
-      running += yin[t2];
-      if (running > 0) {
-        yin[t2] = yin[t2] * t2 / running;
+      running += sum;
+      yin[tau] = running > 0 ? sum * tau / running : 1;
+      if (found < 0) {
+        if (yin[tau] < CMND_THRESHOLD) found = tau;      // Step 3：第一个低于阈值的点……
+      } else if (yin[tau] < yin[found]) {
+        found = tau;                                     // ……沿着下坡走到局部极小
       } else {
-        yin[t2] = 1;
-      }
-    }
-
-    // ---- Step 3: 找第一个低于阈值的局部极小
-    var found = -1;
-    for (var t3 = 1; t3 <= tauMax; t3++) {
-      if (yin[t3] < CMND_THRESHOLD) {
-        while (t3 + 1 <= tauMax && yin[t3 + 1] < yin[t3]) t3++;
-        found = t3;
-        break;
+        break;                                           // 极小右边一个点已经算好，停
       }
     }
     if (found < 0) return { hz: 0, conf: 0, tau: -1, cmnd: 1 };

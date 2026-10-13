@@ -145,7 +145,8 @@ async def run(args):
         R.check("第一次点歌：先弹出麦克风说明卡", await wait_for(page, "!!__siren.modal", 2000))
         await shot(page, "02-mic-card")
         await page.keyboard.press("Enter")
-        R.check("同意后进入「哼一声试试」", await wait_for(page, "__siren.name === 'hum'", 3000))
+        R.check("同意后进入「哼一声试试」", await wait_for(page, "__siren.name === 'hum'", 3000),
+                await page.evaluate("JSON.stringify([__siren.name, !!__siren.modal, Siren.Session.micState(), Siren.Progress.onboarded()])"))
         R.check("哼一声：听见了", await wait_for(page, "Siren.Progress.range() && Siren.Progress.range().comfort > 0", 8000),
                 await page.evaluate("JSON.stringify(Siren.Progress.range())"))
         await page.wait_for_timeout(500)

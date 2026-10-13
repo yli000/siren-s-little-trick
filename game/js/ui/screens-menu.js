@@ -204,9 +204,7 @@
       var g = Gfx.ctx();
       var W = Gfx.W();
       var H = Gfx.H();
-      g.fillStyle = '#12173c'; g.fillRect(0, 0, W, H);
-      g.fillStyle = '#1b2150';
-      for (var py = 0; py < H; py += 4) for (var px = (py / 4 % 2) * 4; px < W; px += 8) g.fillRect(px, py, 1, 1);
+      g.drawImage(Gfx.dotBg(), 0, 0);
       var list = ships();
       var n = list.length;
       var rows = Math.ceil(n / 3);
@@ -316,9 +314,7 @@
       var g = Gfx.ctx();
       var W = Gfx.W();
       var H = Gfx.H();
-      g.fillStyle = '#12173c'; g.fillRect(0, 0, W, H);
-      g.fillStyle = '#1b2150';
-      for (var py = 0; py < H; py += 4) for (var px = (py / 4 % 2) * 4; px < W; px += 8) g.fillRect(px, py, 1, 1);
+      g.drawImage(Gfx.dotBg(), 0, 0);
 
       if (set.page === 'main') {
         UI.topBar(t_('settingsTitle'), function () { App().go('title'); });

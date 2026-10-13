@@ -18,8 +18,10 @@ body {
 }
 .screen {
   display: block;
-  image-rendering: pixelated;
+  /* 画布只有逻辑尺寸的 2 倍，靠这里最近邻放大到屏幕；最后一条生效，老 WebKit 认第一条 */
+  image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
+  image-rendering: pixelated;
   outline: none;
 }
 .boot {
