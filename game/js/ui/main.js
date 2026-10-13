@@ -76,6 +76,12 @@
   }
 
   function showMicCard(then) {
+    function ok() {
+      App.modal = null;
+      withMic(then);
+    }
+    // 卡片一出现回车就该是「好」，不必等下一帧画出按钮（按键事件可能比下一帧先到）
+    UI.setPrimary(ok);
     App.modal = {
       draw: function () {
         var g = Gfx.ctx();
@@ -92,10 +98,7 @@
         Gfx.spr(g, 'i_mic', W / 2 - 5, y + 14);
         Gfx.text(g, UI.t('micTitle'), W / 2, y + 40, { c: Gfx.C.CREAM, a: 'c' });
         for (var i = 0; i < body.length; i += 1) Gfx.text(g, body[i], W / 2, y + 58 + i * 14, { c: '#c6ccf5', a: 'c' });
-        UI.btn('micok', W / 2 - 40, y + h - 32, 80, 24, UI.t('ok'), function () {
-          App.modal = null;
-          withMic(then);
-        }, { primary: true });
+        UI.btn('micok', W / 2 - 40, y + h - 32, 80, 24, UI.t('ok'), ok, { primary: true });
       }
     };
   }

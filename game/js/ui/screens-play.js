@@ -170,8 +170,10 @@
     var L = Gfx.L;
     var py = L.panelY;
     Gfx.panel(g, 8, py, 164, 62, 8, C.NAVY, C.NAVY_LL, C.INK);
-    g.fillStyle = '#232a63';
-    for (var r = 0; r < 4; r += 1) for (var dx = 16; dx < 164; dx += 4) g.fillRect(dx, py + 18 + r * 10, 1, 1);
+    g.drawImage(Gfx.cached('trackDots', 148, 31, function (x) {
+      x.fillStyle = '#232a63';
+      for (var r = 0; r < 4; r += 1) for (var dx = 0; dx < 148; dx += 4) x.fillRect(dx, r * 10, 1, 1);
+    }), 16, py + 18);
 
     var live = st.live || { k: 0, l: 0 };
     var head = -1;

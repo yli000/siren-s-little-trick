@@ -1,6 +1,6 @@
 /* 塞壬的小把戏 —— 前端：gfx.js（画布、像素图、位图字体、海面与塞壬）
  *
- * 逻辑画布 180 像素宽、320–400 像素高（随手机比例），整数倍最近邻放大到屏幕。
+ * 逻辑画布 180 像素宽、320–400 像素高（随手机比例），2 倍画到屏幕画布，再由 CSS 最近邻放大。
  * 所有界面都画在这一块画布上；本文件只提供画法，不管流程。
  */
 (function (global) {
@@ -89,11 +89,15 @@
       cw = ch * W / H;
       if (cw > vw) { cw = vw; ch = cw * H / W; }
     }
-    var dpr = Math.max(1, Math.min(3, global.devicePixelRatio || 1));
+    // 屏幕上的画布只做逻辑尺寸的 2 倍，剩下的放大交给 CSS（image-rendering: pixelated，最近邻）。
+    // 以前按设备像素做满（3 倍屏上约 1170×2500，每帧 300 万像素），手机上合成这么大的画布会掉帧。
+    // 2 倍而不是 1 倍：万一某个 WebView 不认 pixelated，糊也只糊一点。
+    var dpr = global.devicePixelRatio || 1;
+    var S = dpr >= 1.5 ? 2 : 1;
     screen.style.width = Math.floor(cw) + 'px';
     screen.style.height = Math.floor(ch) + 'px';
-    screen.width = Math.floor(cw * dpr);
-    screen.height = Math.floor(ch * dpr);
+    screen.width = W * S;
+    screen.height = H * S;
     layout();
   }
 
@@ -166,6 +170,26 @@
     }
   }
   /** opt: c 颜色 / s 整数倍 / a 'l'|'c'|'r' / o 描边色 / sh 阴影色。y 是这一行的顶边。 */
+  var textCache = {};
+  var textCount = 0;
+  /** 把一行字（含描边、阴影）画进一块小画布并缓存：之后每帧只要一次 drawImage */
+  function textImage(str, w, s, c, o, sh) {
+    var key = str + '\u0001' + s + c + (o || '') + (sh || '');
+    var hit = textCache[key];
+    if (hit) return hit;
+    if (textCount > 600) { textCache = {}; textCount = 0; }   // 打字机效果等会产生很多临时串：满了就整体清掉
+    var cv = mk(Math.max(1, w + 2), FONT.h * s + 3);
+    var x = cv.getContext('2d');
+    x.imageSmoothingEnabled = false;   // 2 倍字要最近邻放大
+    if (o) {
+      if (sh) for (var dx = -1; dx <= 1; dx += 1) glyphs(x, str, 1 + dx, 3, sh, s);
+      for (var ox = -1; ox <= 1; ox += 1) for (var oy = -1; oy <= 1; oy += 1) if (ox || oy) glyphs(x, str, 1 + ox, 1 + oy, o, s);
+    } else if (sh) glyphs(x, str, 1, 2, sh, s);
+    glyphs(x, str, 1, 1, c, s);
+    textCache[key] = cv;
+    textCount += 1;
+    return cv;
+  }
   function text(ctx, str, x, y, opt) {
     opt = opt || {};
     str = String(str);
@@ -173,11 +197,8 @@
     var w = tw(str, s);
     x = Math.round(opt.a === 'c' ? x - w / 2 : opt.a === 'r' ? x - w : x);
     y = Math.round(y);
-    if (opt.o) {
-      if (opt.sh) for (var dx = -1; dx <= 1; dx += 1) glyphs(ctx, str, x + dx, y + 2, opt.sh, s);
-      for (var ox = -1; ox <= 1; ox += 1) for (var oy = -1; oy <= 1; oy += 1) if (ox || oy) glyphs(ctx, str, x + ox, y + oy, opt.o, s);
-    } else if (opt.sh) glyphs(ctx, str, x, y + 1, opt.sh, s);
-    glyphs(ctx, str, x, y, opt.c || C.CREAM, s);
+    if (!str) return w;
+    ctx.drawImage(textImage(str, w, s, opt.c || C.CREAM, opt.o, opt.sh), x - 1, y - 1);
     return w;
   }
   /** 放不下就截断加省略号 */
@@ -223,10 +244,13 @@
   function shape(ctx, x, y, w, h, r, fill) {
     ctx.fillStyle = fill;
     r = Math.min(r, w >> 1, h >> 1);
-    for (var j = 0; j < h; j += 1) {
-      var k = j < r ? inset(r, j) : (j >= h - r ? inset(r, h - 1 - j) : 0);
+    // 只有上下圆角那几行要逐行画；中间是整块矩形，一次画完
+    for (var j = 0; j < r; j += 1) {
+      var k = inset(r, j);
       ctx.fillRect(x + k, y + j, w - 2 * k, 1);
+      ctx.fillRect(x + k, y + h - 1 - j, w - 2 * k, 1);
     }
+    if (h - 2 * r > 0) ctx.fillRect(x, y + r, w, h - 2 * r);
   }
   /** 像素圆角面板：1px 描边 + 硬投影 */
   function panel(ctx, x, y, w, h, r, fill, line, shadow) {
@@ -256,7 +280,28 @@
       for (var i = 0; i < 16; i += 1) if (BAYER[i] < level) x.fillRect(i % 4, i >> 2, 1, 1);
       patCache[key] = c;
     }
-    return ctx.createPattern(patCache[key], 'repeat');
+    // CanvasPattern 每次 createPattern 都是新对象；按画布缓存，一帧几十次调用不再反复分配
+    var own = ctx.__pats || (ctx.__pats = {});
+    return own[key] || (own[key] = ctx.createPattern(patCache[key], 'repeat'));
+  }
+  var layerCache = {};
+  /** 不随时间变的底图（点阵背景之类）画一次缓存起来；key 里要带上尺寸 */
+  function cached(key, w, h, draw) {
+    var c = layerCache[key];
+    if (!c) {
+      c = mk(w, h);
+      draw(c.getContext('2d'));
+      layerCache[key] = c;
+    }
+    return c;
+  }
+  /** 设置、图鉴用的深色点阵底 */
+  function dotBg() {
+    return cached('dots' + H, W, H, function (x) {
+      x.fillStyle = '#12173c'; x.fillRect(0, 0, W, H);
+      x.fillStyle = '#1b2150';
+      for (var py = 0; py < H; py += 4) for (var px = (py / 4 % 2) * 4; px < W; px += 8) x.fillRect(px, py, 1, 1);
+    });
   }
   function dim(a) { g.globalAlpha = a; g.fillStyle = '#080b26'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
   /** 像素抖动渐黑：level 0（不黑）– 1（全黑） */
@@ -412,6 +457,29 @@
   // ---------------------------------------------------------------- 塞壬
 
   var META = Siren.SIREN_META;
+  var sirenMemo = null;
+  /** 把她（头发随风、岩石延长、夜里的月光色）画进 sirenC */
+  function drawSirenBody(r, sw, shh, hgt, ext, t, st) {
+    sc.clearRect(0, 0, 128, 200);
+    var edge = reduceMotion ? 0 : META.edge;
+    sc.drawImage(atlas, r[0] + edge, r[1], sw - edge, shh, edge, 0, sw - edge, shh);
+    for (var cx = 0; cx < edge; cx += 1) {   // 头发末梢被风吹动
+      var amp = 1.6 * (1 - cx / edge);
+      sc.drawImage(atlas, r[0] + cx, r[1], 1, shh, cx, Math.round(amp * Math.sin(t * 2.6 + cx * 0.28)), 1, shh);
+    }
+    for (var e = 0; e < ext; e += 1) sc.drawImage(atlas, r[0], r[1] + shh - 1, sw, 1, 0, shh + e, sw, 1);
+    if (st !== DAY) {   // 月光：乘色后裁回她自己的形状
+      sm.clearRect(0, 0, 128, 200);
+      sm.drawImage(sirenC, 0, 0);
+      sc.globalCompositeOperation = 'multiply';
+      sc.fillStyle = st.self;
+      sc.fillRect(0, 0, sw, hgt);
+      sc.globalCompositeOperation = 'destination-in';
+      sc.drawImage(sirenM, 0, 0);
+      sc.globalCompositeOperation = 'source-over';
+    }
+  }
+
   /** face: calm / sing / listen；glow 0–1 是她身后的光晕 */
   function siren(face, t, st, glow) {
     var name = 'siren_' + face;
@@ -431,23 +499,13 @@
         for (var dy = -p[0]; dy <= p[0]; dy += 1) { var hw = Math.floor(Math.sqrt(p[0] * p[0] - dy * dy)); g.fillRect(gx - hw, gy + dy, hw * 2, 1); }
       });
     }
-    sc.clearRect(0, 0, 128, 200);
-    var edge = reduceMotion ? 0 : META.edge;
-    sc.drawImage(atlas, r[0] + edge, r[1], sw - edge, shh, edge, 0, sw - edge, shh);
-    for (var cx = 0; cx < edge; cx += 1) {   // 头发末梢被风吹动
-      var amp = 1.6 * (1 - cx / edge);
-      sc.drawImage(atlas, r[0] + cx, r[1], 1, shh, cx, Math.round(amp * Math.sin(t * 2.6 + cx * 0.28)), 1, shh);
-    }
-    for (var e = 0; e < ext; e += 1) sc.drawImage(atlas, r[0], r[1] + shh - 1, sw, 1, 0, shh + e, sw, 1);
-    if (st !== DAY) {   // 月光：乘色后裁回她自己的形状
-      sm.clearRect(0, 0, 128, 200);
-      sm.drawImage(sirenC, 0, 0);
-      sc.globalCompositeOperation = 'multiply';
-      sc.fillStyle = st.self;
-      sc.fillRect(0, 0, sw, hgt);
-      sc.globalCompositeOperation = 'destination-in';
-      sc.drawImage(sirenM, 0, 0);
-      sc.globalCompositeOperation = 'source-over';
+    // 她的身体画布只在表情、天色、头发相位或高度变了时重画（头发 15 帧/秒，像素画看不出区别），
+    // 其余帧直接贴上次的结果——每帧省掉三四十次 drawImage
+    var hp = reduceMotion ? 0 : Math.floor(t * 15);
+    var memo = face + '|' + st.name + '|' + hp + '|' + hgt;
+    if (memo !== sirenMemo) {
+      sirenMemo = memo;
+      drawSirenBody(r, sw, shh, hgt, ext, hp / 15, st);
     }
     g.drawImage(sirenC, 0, 0, sw, hgt, x, y, sw, hgt);
     var fy = L.rockFoot - 3;
@@ -542,7 +600,7 @@
     load: load, resize: resize, present: present,
     spr: spr, sprT: sprT, size: size, has: function (n) { return !!A[n]; },
     text: text, tw: tw, fit: fit, wrap: wrap, lineH: function () { return FONT.h; },
-    shape: shape, panel: panel, disc: disc, pat: pat, dim: dim, fade: fade,
+    shape: shape, panel: panel, disc: disc, pat: pat, dim: dim, fade: fade, cached: cached, dotBg: dotBg,
     backdrop: backdrop, backdropRev: backdropRev, siren: siren, world: world,
     parts: parts, emit: emit, burst: burst, stepParts: stepParts, drawParts: drawParts,
     reduceMotion: reduceMotion
