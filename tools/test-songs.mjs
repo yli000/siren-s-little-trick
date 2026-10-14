@@ -16,8 +16,6 @@ const check = (ok, msg) => { if (!ok) { fails += 1; console.log('  ✗ ' + msg);
 console.log('曲库校验');
 check(SONGS.length === 20, `应有 20 首，实际 ${SONGS.length}`);
 const ids = new Set();
-const shipKeys = new Set(SHIPS.map((s) => s.key));
-const regulars = new Set();
 const SIREN_LO = 55;
 const SIREN_HI = 76;
 
@@ -28,9 +26,6 @@ for (const song of SONGS) {
   check(song.title && song.title.zh && song.title.en, `${song.id} 缺少双语歌名`);
   check([1, 2, 3].includes(song.level), `${song.id} 难度应为 1–3`);
   check(song.bpm >= 60 && song.bpm <= 140, `${song.id} bpm 超出 60–140`);
-  check(shipKeys.has(song.regular), `${song.id} 的常客船 ${song.regular} 不存在`);
-  check(!regulars.has(song.regular), `常客船 ${song.regular} 被多首歌占用`);
-  regulars.add(song.regular);
 
   let parsed = true;
   for (const p of song.phrases) {

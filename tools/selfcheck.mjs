@@ -146,7 +146,7 @@ console.log('');
 console.log('【4】脚本加载顺序（被依赖的命名空间必须先加载）');
 const NAMESPACE_OWNERS = [
   { file: 'data/songs.js', provides: ['Siren.SONGS'] },
-  { file: 'data/ships.js', provides: ['Siren.SHIPS', 'Siren.RARITY'] },
+  { file: 'data/ships.js', provides: ['Siren.SHIPS', 'Siren.SHIP_STYLE'] },
   { file: 'data/i18n.js', provides: ['Siren.I18N'] },
   { file: 'data/changelog.js', provides: ['Siren.CHANGELOG'] },
   { file: 'data/sprites.js', provides: ['Siren.SPRITES', 'Siren.SIREN_META'] },

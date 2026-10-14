@@ -340,34 +340,44 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
   check('切后台挂起后，回来点一下就解除挂起（容器没发 visibilitychange 也行）', S.Audio.stats().held === false);
 }
 
-// ---------------------------------------------------------------- 7. 抽船保底与清除进度
+// ---------------------------------------------------------------- 7. 抽船：机会一样，没见过的先来，见齐后不连着重复；清除进度
 {
   const { S } = await world();
   const P = S.Progress;
-  // 先把除了一艘以外的船都收进图鉴
+  let seed = 7;
+  const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const seen = new Set();
+  for (let i = 0; i < S.SHIPS.length; i += 1) {
+    const idx = P.pickShip(S.SONGS[i % S.SONGS.length].id, rng);
+    P.recordArrival(S.SONGS[i % S.SONGS.length].id, idx);
+    seen.add(idx);
+  }
+  check('唱满 21 首：21 艘船都见过，没有重复', seen.size === S.SHIPS.length, `${seen.size} 艘`);
+
+  const count = {};
+  let repeats = 0;
+  let prev = S.Progress.recent()[0];
+  for (let i = 0; i < 21000; i += 1) {
+    const idx = P.pickShip('twinkle', rng);
+    const key = S.SHIPS[idx].key;
+    if (key === prev) repeats += 1;
+    P.recordArrival('twinkle', idx);
+    prev = key;
+    count[key] = (count[key] || 0) + 1;
+  }
+  const vals = Object.values(count);
+  check('见齐之后：每艘船的机会一样（各约 1/21）', vals.length === 21 && Math.min(...vals) > 850 && Math.max(...vals) < 1150, `${Math.min(...vals)}–${Math.max(...vals)} 次`);
+  check('见齐之后：同一艘不会连着来两次', repeats === 0);
+  check('唱哪首歌不影响来哪艘船', P.pickShip('twinkle', () => 0.3) === P.pickShip('mary', () => 0.3));
+
   const c = {};
   S.SHIPS.forEach((s, i) => { if (i !== 5) c[s.key] = 1; });
   S.Store.setJSON(S.Store.KEYS.CODEX, c);
-  S.Store.set(S.Store.KEYS.DUPES, P.PITY_AFTER);
-  const idx = P.pickShip('twinkle', () => 0.999);
-  check('连续来了 2 艘见过的船：下一艘必是新船', idx === 5, S.SHIPS[idx].key);
+  check('只剩一艘没见过：下一艘就是它', P.pickShip('twinkle', () => 0.999) === 5);
+
   P.setLang('en');
   P.reset();
   check('清除进度：图鉴清空，语言保留', P.collectedCount() === 0 && P.lang() === 'en');
-
-  // 常客权重：大量抽样里，小星星的常客（月亮船）出现得比别的传说船多
-  S.Store.remove(S.Store.KEYS.CODEX);
-  S.Store.remove(S.Store.KEYS.DUPES);
-  let moon = 0;
-  let ghost = 0;
-  let seed = 7;
-  const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-  for (let i = 0; i < 6000; i += 1) {
-    const k = S.SHIPS[P.pickShip('twinkle', rng)].key;
-    if (k === 'moon') moon += 1;
-    if (k === 'ghost') ghost += 1;
-  }
-  check('常客船权重 ×3', moon > ghost * 2.2, `moon ${moon} / ghost ${ghost}`);
 }
 
 console.log(`\n${pass} 项通过，${fails.length} 项失败`);

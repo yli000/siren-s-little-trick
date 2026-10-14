@@ -239,6 +239,31 @@
       }
     }
     if (cur) lines.push(cur.replace(/\s+$/, ''));
+    return noWidow(lines, width);
+  }
+
+  /**
+   * 最后一行太短（一个英文词、两三个汉字）时，从上一行借一个词 / 一个字下来，免得孤零零挂在最后。
+   * 借了之后两行都还要放得下；借的字不能是不能放行首的标点。
+   */
+  function noWidow(lines, width) {
+    for (var guard = 0; guard < 3 && lines.length >= 2; guard += 1) {
+      var last = lines[lines.length - 1];
+      var prev = lines[lines.length - 2];
+      if (tw(last) >= width * 0.3) break;
+      var take;
+      var m = /(^|\s)(\S+)$/.exec(prev);
+      if (m && m[2].charCodeAt(0) < 128) take = m[2];          // 英文：整词
+      else {
+        take = prev[prev.length - 1];                         // 中文：一个字（连着前面的字一起，如果它是不能放行首的标点）
+        if (NO_START.indexOf(take) >= 0 && prev.length > 1) take = prev.slice(-2);
+      }
+      var rest = prev.slice(0, prev.length - take.length).replace(/\s+$/, '');
+      var joined = take.charCodeAt(0) < 128 ? take + ' ' + last : take + last;
+      if (!rest || tw(joined) > width || NO_END.indexOf(rest[rest.length - 1]) >= 0) break;
+      lines[lines.length - 2] = rest;
+      lines[lines.length - 1] = joined;
+    }
     return lines;
   }
 

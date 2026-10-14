@@ -38,7 +38,6 @@
     ONBOARDED: PREFIX + 'onboarded',       // 是否已「哼一声试试」
     CODEX: PREFIX + 'codex',               // JSON { shipKey: 来访次数 }
     RECENT: PREFIX + 'recent',             // JSON [最近来过的船 key]，最多 3 个
-    DUPES: PREFIX + 'dupes',               // 连续来了几艘见过的船（保底计数）
     SONGS: PREFIX + 'songs',               // JSON { songId: { plays, lastShip } }
     LAST_SONG: PREFIX + 'lastSong',        // 上次唱的歌
     PRACTICE: PREFIX + 'practice',         // JSON { exerciseId: true }

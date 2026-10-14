@@ -13,10 +13,6 @@
   var Store = Siren.Store;
   var K = Store.KEYS;
 
-  var REGULAR_BONUS = 3;   // 这首歌的常客船
-  var UNSEEN_BONUS = 3;    // 没见过的船
-  var PITY_AFTER = 2;      // 连续来了几艘见过的船之后，下一艘必是新船
-
   // ---------------------------------------------------------------- 图鉴
 
   function codex() { return Store.getJSON(K.CODEX, {}); }
@@ -36,10 +32,10 @@
   }
 
   /**
-   * 抽一艘船（与唱得好坏无关）。
-   * 稀有度权重同档平分；没见过的 ×3；这首歌的常客 ×3；
-   * 连续 PITY_AFTER 艘见过的船之后，只在没见过的船里抽（还有的话）。
-   * @param {string} songId
+   * 抽一艘船：与唱得好坏、唱哪首歌都无关，每艘船的机会一样。
+   * 为了让玩家把每艘船都见到：还有没见过的船时，只在没见过的里面抽（唱满 21 首就见齐）；
+   * 见齐之后在全部里面抽，只是不和上一艘相同。
+   * @param {string} songId  （不影响结果，保留参数以兼容调用方）
    * @param {Function} [rng] 0–1 随机数（测试可注入）
    * @returns {number} SHIPS 下标
    */
@@ -47,32 +43,15 @@
     rng = rng || Math.random;
     var ships = Siren.SHIPS;
     var c = codex();
-    var song = songById(songId);
-    var regular = song ? song.regular : null;
-    var perRarity = {};
-    for (var i = 0; i < ships.length; i += 1) perRarity[ships[i].rarity] = (perRarity[ships[i].rarity] || 0) + 1;
-
-    var anyNew = false;
-    for (var j = 0; j < ships.length; j += 1) if (!c[ships[j].key]) anyNew = true;
-    var onlyNew = anyNew && Store.getNumber(K.DUPES, 0) >= PITY_AFTER;
-
-    var pool = [];
-    var total = 0;
-    for (var k = 0; k < ships.length; k += 1) {
-      var s = ships[k];
-      if (onlyNew && c[s.key]) continue;
-      var w = Siren.RARITY[s.rarity].weight / perRarity[s.rarity];
-      if (!c[s.key]) w *= UNSEEN_BONUS;
-      if (s.key === regular) w *= REGULAR_BONUS;
-      pool.push([k, w]);
-      total += w;
+    var last = recent()[0];
+    var unseen = [];
+    var others = [];
+    for (var i = 0; i < ships.length; i += 1) {
+      if (!c[ships[i].key]) unseen.push(i);
+      if (ships[i].key !== last) others.push(i);
     }
-    var r = rng() * total;
-    for (var m = 0; m < pool.length; m += 1) {
-      r -= pool[m][1];
-      if (r <= 0) return pool[m][0];
-    }
-    return pool[pool.length - 1][0];
+    var pool = unseen.length ? unseen : (others.length ? others : ships.map(function (_, k) { return k; }));
+    return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
   }
 
   /**
@@ -89,7 +68,6 @@
     var rec = recent().filter(function (k) { return k !== key; });
     rec.unshift(key);
     Store.setJSON(K.RECENT, rec.slice(0, 3));
-    Store.set(K.DUPES, isNew ? 0 : Store.getNumber(K.DUPES, 0) + 1);
 
     var songs = Store.getJSON(K.SONGS, {});
     var info = songs[songId] || { plays: 0, lastShip: null };
@@ -192,7 +170,7 @@
 
   /** 清除进度：图鉴、唱过的歌、练习、音区；保留语言与声音设置 */
   function reset() {
-    [K.CODEX, K.RECENT, K.DUPES, K.SONGS, K.LAST_SONG, K.PRACTICE, K.RANGE, K.PREF_SHIFT, K.LATENCY, K.ONBOARDED]
+    [K.CODEX, K.RECENT, K.SONGS, K.LAST_SONG, K.PRACTICE, K.RANGE, K.PREF_SHIFT, K.LATENCY, K.ONBOARDED]
       .forEach(function (key) { Store.remove(key); });
   }
 
@@ -204,7 +182,6 @@
     range: range, setRange: setRange, hasRange: hasRange, keyRange: keyRange, keyKnown: keyKnown, prefShift: prefShift, songShift: songShift, learnShift: learnShift,
     latency: latency, setLatency: setLatency,
     lang: lang, setLang: setLang, sfxOff: sfxOff, setSfxOff: setSfxOff, onboarded: onboarded, setOnboarded: setOnboarded,
-    reset: reset,
-    PITY_AFTER: PITY_AFTER
+    reset: reset
   };
 })(typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {}));
