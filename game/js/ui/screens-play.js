@@ -154,7 +154,8 @@
         var done = d < st.phraseIdx;
         var cur = d === st.phraseIdx;
         g.fillStyle = C.INK; g.fillRect(px - 1, 27, dw - 1, 8);
-        g.fillStyle = done ? C.GOLD : cur ? (Math.floor(t * 3) % 2 ? C.CREAM : '#b9c4ff') : '#46508f';
+        // 进度点只表示唱到哪了，不是成绩：唱过的是米色，不用金色（金色是 Perfect）
+        g.fillStyle = done ? C.CREAM : cur ? (Math.floor(t * 3) % 2 ? C.CREAM : '#8f9be0') : '#46508f';
         g.fillRect(px, 28, dw - 3, 6);
       }
 
@@ -207,8 +208,10 @@
       else {
         // 还没判：亮描边；正在唱、声音也在容差里时整块亮起来（审查第 5 条）
         var near = on && lastPt && Math.abs(lastPt.midi - n.midi) <= 0.5 && st.singT - lastPt.t < 150;
-        fill = near ? '#d9e0ff' : '#2a3270';
-        shade = near ? '#9fb0ff' : '#232a63';
+        // 已经唱过、还在等判定（音结束后约 0.3 秒）：先填上浅色，不让人以为没算
+        var past = head >= 0 && head * st.phraseMs >= n.startMs + n.durMs;
+        fill = near ? '#d9e0ff' : past ? '#5a66b8' : '#2a3270';
+        shade = near ? '#9fb0ff' : past ? '#46508f' : '#232a63';
         outline = C.CREAM;
       }
       g.fillStyle = outline; g.fillRect(gm.x - 1, gm.y - 1 - bump, gm.w + 2, 7 + bump * 2);
@@ -299,6 +302,8 @@
     if (st.mic === false && st.phase !== 'idle') {
       g.fillStyle = C.CORAL;
       for (var k = -7; k <= 7; k += 1) g.fillRect(cx + k, cy - k, 2, 1);
+      // 点一下带斜杠的麦克风：再要一次（下一句就用上）
+      if (!st.paused && !st.waiting) UI.hit('micRetry', cx - 20, cy - 20, 40, 40, function () { App().retryMic(); });
     }
   }
 
@@ -410,6 +415,13 @@
     if (st.waiting === 'listen') {
       box = spotlight([panel], t);
       bubble(t_('tutListen'), box.y0, [ok]);
+    } else if (st.waiting === 'turn' && !st.mic) {
+      // 没有麦克风：不讲「变红时开口」，先说清楚怎么打开；打开了这一步就换成正常的说明
+      box = spotlight([micR], t);
+      bubble(t_('tutTurnNoMic'), L.panelY, [
+        { label: t_('tutContinue'), act: function () { Session.proceed(); } },
+        { label: t_('micRetry'), act: function () { App().retryMic(); }, primary: true }
+      ]);
     } else if (st.waiting === 'turn') {
       box = spotlight([panel, micR], t);
       bubble(t_('tutTurn'), box.y0, [ok]);
@@ -419,12 +431,14 @@
       bubble(t_('tutQuiet'), L.panelY, [ok]);
     } else if (st.waiting === 'end') {
       // 按这一遍的结果说：有对上的音就讲颜色；全是 Miss 就说红线要落在音块上；没有麦克风就说清楚
-      var hits = (st.tiers || []).filter(function (x) { return x && x !== 'miss' && x !== 'quiet'; }).length;
-      var again = { label: t_('tutAgain'), act: function () { App().guideAgain(); } };
+      // 一半以上是 Miss 就说「没太跟上」，并把「再试一次」放在主位
+      var judged = (st.tiers || []).filter(function (x) { return !!x; });
+      var misses = judged.filter(function (x) { return x === 'miss' || x === 'quiet'; }).length;
+      var again = { label: t_(st.mic ? 'tutAgain' : 'micRetry'), act: function () { App().guideAgain(); } };
       var start = { label: t_('tutStart'), act: function () { Session.proceed(); } };
       box = spotlight([panel], t);
-      if (!st.mic) { again.primary = true; bubble(t_('tutEndNoMic'), box.y0, [again, start]); }
-      else if (!hits) { again.primary = true; bubble(t_('tutEndMiss'), box.y0, [again, start]); }
+      if (!st.mic) { again.primary = true; bubble(t_('tutEndNoMic'), box.y0, [start, again]); }
+      else if (misses * 2 > judged.length) { again.primary = true; bubble(t_('tutEndMiss'), box.y0, [again, start]); }
       else { start.primary = true; bubble(t_('tutEnd'), box.y0, [again, start]); }
     }
   }

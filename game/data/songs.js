@@ -20,7 +20,7 @@
     { id: 'jacques', title: { zh: '两只老虎', en: 'Frère Jacques' }, level: 1, key: 62, bpm: 112, regular: 'tug',
       origin: 'French folk tune, 18th c.',
       phrases: ['1 2 3 1 1 2 3 1', '3 4 5:4 3 4 5:4', '5:1 6:1 5:1 4:1 3 1', '5:1 6:1 5:1 4:1 3 1', '1 5, 1:4 1 5, 1:4'] },
-    { id: 'mary', title: { zh: '玛丽有只小羊羔', en: 'Mary\'s Little Lamb' }, level: 1, key: 64, bpm: 108, regular: 'paper',
+    { id: 'mary', title: { zh: '玛丽有只小羊羔', en: 'Mary Had a Little Lamb' }, level: 1, key: 64, bpm: 108, regular: 'paper',
       origin: 'American nursery tune, 1830',
       phrases: ['3 2 1 2 3 3 3:4', '2 2 2:4 3 5 5:4', '3 2 1 2 3 3 3 3', '2 2 3 2 1:8'] },
     { id: 'row', title: { zh: '划船歌', en: 'Row Your Boat' }, level: 1, key: 60, bpm: 104, regular: 'raft',

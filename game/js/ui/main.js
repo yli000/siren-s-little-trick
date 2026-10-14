@@ -67,9 +67,14 @@
       if (!ok && !App.deniedToast) {
         // 第一次发现没有麦克风：说清楚后果和去哪里打开，玩家点了「知道了」再往下走
         App.deniedToast = true;
-        var go = function () { App.modal = null; then(ok); };
-        UI.setPrimary(go);
-        App.modal = { draw: function () { UI.popup(UI.t('micNoneTitle'), UI.t('micNoneBody'), [{ label: UI.t('gotIt'), act: go }], null); }, onBack: go };
+        var go = function (got) { App.modal = null; then(!!got); };
+        var skip = function () { go(false); };
+        // 「我开好了」：玩家去网站设置里改好了，再要一次；还是没有就留在这张卡上
+        var retry = function () { App.retryMic(function (got) { if (got) go(true); }); };
+        UI.setPrimary(retry);
+        App.modal = { draw: function () {
+          UI.popup(UI.t('micNoneTitle'), UI.t('micNoneBody'), [{ label: UI.t('micSkip'), act: skip }, { label: UI.t('micRetry'), act: retry, primary: true }], null);
+        }, onBack: skip };
         return;
       }
       then(ok);
@@ -103,10 +108,22 @@
   App.startPractice = function (exId) {
     beforeSinging(function () { App.go('play', { kind: 'practice', exercise: exId }); });
   };
-  /** 教程最后点「再试一次」：没有麦克风就先再要一次（这一下是点击，浏览器可以再弹授权框） */
+  /**
+   * 「我开好了」：再要一次麦克风（这一下是点击；浏览器没记住拒绝的话会再弹授权框）。
+   * 还是拿不到就提示一下。done(ok)
+   */
+  App.retryMic = function (done) {
+    Session.requestMic().then(function (ok) {
+      if (!ok) UI.toast(UI.t('micStill'), 2);
+      if (ok && App.name !== 'play') Session.releaseMic();   // 不在唱歌：试通了就先关上，唱的时候再开
+      if (done) done(ok);
+    });
+  };
+
+  /** 教程最后点「再试一次」/「我开好了」：没有麦克风就先再要一次，拿到了才重来 */
   App.guideAgain = function () {
     if (Session.micOpen()) { Session.guideAgain(); return; }
-    Session.requestMic().then(function () { if (App.name === 'play') Session.guideAgain(); });
+    App.retryMic(function (ok) { if (ok && App.name === 'play') Session.guideAgain(); });
   };
 
   /**

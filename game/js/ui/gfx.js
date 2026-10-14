@@ -210,6 +210,7 @@
   }
 
   var NO_START = '，。！？、；：）》」,.!?;:)\'"';
+  var NO_END = '「《（(';
   /** 中英混排换行：中文按字，英文按词 */
   function wrap(str, width) {
     var tokens = [];
@@ -228,8 +229,11 @@
       var tok = tokens[t];
       if (cur === '' && tok === ' ') continue;
       if (tw(cur + tok) > width && cur !== '' && NO_START.indexOf(tok[0]) < 0) {
+        // 开引号、开括号不留在行尾：带到下一行
+        var carry = '';
+        while (cur.length > 1 && NO_END.indexOf(cur[cur.length - 1]) >= 0) { carry = cur[cur.length - 1] + carry; cur = cur.slice(0, -1); }
         lines.push(cur.replace(/\s+$/, ''));
-        cur = tok === ' ' ? '' : tok;
+        cur = carry + (tok === ' ' ? '' : tok);
       } else {
         cur += tok;
       }

@@ -436,7 +436,10 @@
 
   function micPopup() {
     var close = function () { set.pop = null; };
-    UI.popup(t_('micBlockedTitle'), t_('micBlockedBody'), [{ label: t_('ok'), act: close }], close);
+    UI.popup(t_('micBlockedTitle'), t_('micBlockedBody'), [
+      { label: t_('ok'), act: close },
+      { label: t_('micRetry'), act: function () { App().retryMic(function (ok) { if (ok) set.pop = null; }); }, primary: true }
+    ], close);
   }
 
   Screens.settings = {

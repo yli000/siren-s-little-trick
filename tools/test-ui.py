@@ -271,7 +271,10 @@ async def run(args):
         R.check("拒绝后：弹窗说明后果和去哪里打开", await wait_for(page, "!!__siren.modal && __siren.name !== 'play'", 3000))
         await shot(page, "10a-no-mic-popup")
         await page.keyboard.press("Enter")
-        R.check("点「知道了」：照常开始唱", await wait_for(page, "__siren.name === 'play'", 3000))
+        await page.wait_for_timeout(300)
+        R.check("点「我开好了」但还是没授权：留在这张卡上", await page.evaluate("!!__siren.modal && __siren.name !== 'play'"))
+        await page.evaluate("__siren.modal.onBack()")
+        R.check("点「先这样」：照常开始唱", await wait_for(page, "__siren.name === 'play'", 3000))
         R.check("拒绝后：这一句每个音都是 Miss", await wait_for(page, "__events.some(e => e.t === 'phase' && e.p.phase === 'result')", 20000)
                 and await page.evaluate("__events.filter(e => e.t === 'note').length > 0 && __events.filter(e => e.t === 'note').every(e => e.p.tier === 'miss')"),
                 await page.evaluate("JSON.stringify(__events.filter(e => e.t === 'note').map(e => e.p.tier))"))
