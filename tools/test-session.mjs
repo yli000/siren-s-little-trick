@@ -269,7 +269,7 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
   const gates = [];
   await walkGuide(S, clock, gates, (g) => (g.filter((x) => x === 'end').length === 1 ? 'again' : 'start'));
   const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
-  check('教程最后点「再试一次」：塞壬再唱这一句', listens === 2 && gates.join() === 'listen,turn,end,turn,end', gates.join());
+  check('教程最后点「再试一次」：塞壬再唱这一句，不再讲「轮到你」', listens === 2 && gates.join() === 'listen,turn,end,end', gates.join());
 }
 {
   const { S, clock } = await world();
@@ -277,7 +277,7 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
   S.Session.startGuide();
   const gates = [];
   await walkGuide(S, clock, gates);
-  check('教程里没出声：提示两次「没听到」，然后讲档位', gates.join() === 'listen,turn,quiet,turn,quiet,turn,end', gates.join());
+  check('教程里没出声：提示两次「没听到」，然后讲档位；「轮到你」只讲一次', gates.join() === 'listen,turn,quiet,quiet,end', gates.join());
 }
 {
   const { S, clock } = await world();

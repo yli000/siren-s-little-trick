@@ -268,7 +268,10 @@ async def run(args):
         await wait_for(page, "!!(window.__siren && __siren.name === 'title')", 5000)
         await page.evaluate(HOOK)
         await page.evaluate("Siren.Progress.setOnboarded(); __siren.startSong(Siren.SONGS[2])")
-        R.check("拒绝后照常开始唱", await wait_for(page, "__siren.name === 'play'", 3000))
+        R.check("拒绝后：弹窗说明后果和去哪里打开", await wait_for(page, "!!__siren.modal && __siren.name !== 'play'", 3000))
+        await shot(page, "10a-no-mic-popup")
+        await page.keyboard.press("Enter")
+        R.check("点「知道了」：照常开始唱", await wait_for(page, "__siren.name === 'play'", 3000))
         R.check("拒绝后：这一句每个音都是 Miss", await wait_for(page, "__events.some(e => e.t === 'phase' && e.p.phase === 'result')", 20000)
                 and await page.evaluate("__events.filter(e => e.t === 'note').length > 0 && __events.filter(e => e.t === 'note').every(e => e.p.tier === 'miss')"),
                 await page.evaluate("JSON.stringify(__events.filter(e => e.t === 'note').map(e => e.p.tier))"))

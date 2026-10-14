@@ -293,7 +293,13 @@
     Gfx.disc(g, cx, cy + 2, 16, C.INK);
     Gfx.disc(g, cx, cy, 16, C.INK);
     Gfx.disc(g, cx, cy, 15, rec ? C.CORAL : C.NAVY_L);
-    if (rec) Gfx.spr(g, 'i_mic', cx - 5, cy - 7); else Gfx.spr(g, 'i_note2', cx - 5, cy - 5);
+    // 平时是灰色的麦克风，轮到你唱时变红；没有麦克风时画一道斜杠
+    if (rec) Gfx.spr(g, 'i_mic', cx - 5, cy - 7);
+    else Gfx.sprT(g, 'i_mic', cx - 5, cy - 7, st.mic === false && st.phase !== 'idle' ? '#5a66b8' : C.DIM);
+    if (st.mic === false && st.phase !== 'idle') {
+      g.fillStyle = C.CORAL;
+      for (var k = -7; k <= 7; k += 1) g.fillRect(cx + k, cy - k, 2, 1);
+    }
   }
 
   function captions(st, t) {
@@ -315,7 +321,10 @@
       else if (P.firstTime && st.phraseIdx === 0) cap = t_('herTurn');
       if (cap) Gfx.text(g, cap, W / 2, py - 22, { c: '#9ff3e8', a: 'c', o: C.INK });
     }
-    if (st.phase === 'countin' || (st.phase === 'sing' && st.singT < 450)) {
+    // 教程：倒数一开始就提示「让红线贴着音块走」，开口时不用再读字
+    var tut = P.kind === 'guide' && (st.phase === 'countin' || st.phase === 'sing');
+    if (tut) Gfx.text(g, t_('tutSing'), W / 2, py - 62, { c: C.CREAM, a: 'c', o: C.INK });
+    if (st.phase === 'countin' || (st.phase === 'sing' && st.singT < 450 && P.kind !== 'guide')) {
       // 「轮到你」+ 三格倒数：嗒、嗒、麦克风（第三格就是第一个音）
       var big = !(st.phase === 'countin' && st.phaseT < 100);
       Gfx.text(g, t_('yourTurn'), W / 2, py - (big ? 44 : 34), { c: C.GOLD, s: big ? 2 : 1, a: 'c', o: C.INK, sh: C.INK });
@@ -336,9 +345,6 @@
           g.fillRect(bx + 3, by + 1, 3, 5); g.fillRect(bx + 2, by + 5, 1, 1); g.fillRect(bx + 6, by + 5, 1, 1); g.fillRect(bx + 4, by + 7, 1, 1);
         }
       }
-    }
-    if (P.kind === 'guide' && st.phase === 'sing' && st.singT >= 450) {
-      Gfx.text(g, t_('tutSing'), W / 2, py - 40, { c: C.CREAM, a: 'c', o: C.INK });
     }
     if (st.phase === 'hum') {
       Gfx.text(g, t_('humTitle'), W / 2, py - 44, { c: C.GOLD, s: 2, a: 'c', o: C.INK, sh: C.INK });
@@ -408,14 +414,18 @@
       box = spotlight([panel, micR], t);
       bubble(t_('tutTurn'), box.y0, [ok]);
     } else if (st.waiting === 'quiet') {
-      box = spotlight([micR], t);
-      bubble(t_('tutQuiet'), Math.min(box.y0, L.panelY), [ok]);
+      // 不框麦克风：框住了玩家会以为要按它
+      Gfx.dim(0.62);
+      bubble(t_('tutQuiet'), L.panelY, [ok]);
     } else if (st.waiting === 'end') {
+      // 按这一遍的结果说：有对上的音就讲颜色；全是 Miss 就说红线要落在音块上；没有麦克风就说清楚
+      var hits = (st.tiers || []).filter(function (x) { return x && x !== 'miss' && x !== 'quiet'; }).length;
+      var again = { label: t_('tutAgain'), act: function () { App().guideAgain(); } };
+      var start = { label: t_('tutStart'), act: function () { Session.proceed(); } };
       box = spotlight([panel], t);
-      bubble(t_('tutEnd'), box.y0, [
-        { label: t_('tutAgain'), act: function () { Session.guideAgain(); } },
-        { label: t_('tutStart'), act: function () { Session.proceed(); }, primary: true }
-      ]);
+      if (!st.mic) { again.primary = true; bubble(t_('tutEndNoMic'), box.y0, [again, start]); }
+      else if (!hits) { again.primary = true; bubble(t_('tutEndMiss'), box.y0, [again, start]); }
+      else { start.primary = true; bubble(t_('tutEnd'), box.y0, [again, start]); }
     }
   }
 

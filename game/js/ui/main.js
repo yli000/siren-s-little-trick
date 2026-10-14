@@ -64,7 +64,14 @@
     var nav = App.nav;
     Session.requestMic().then(function (ok) {
       if (App.nav !== nav || App.modal) { if (App.name !== 'play') Session.releaseMic(); return; }
-      if (!ok && !App.deniedToast) { App.deniedToast = true; UI.toast(UI.t('micNone'), 2.4); }
+      if (!ok && !App.deniedToast) {
+        // 第一次发现没有麦克风：说清楚后果和去哪里打开，玩家点了「知道了」再往下走
+        App.deniedToast = true;
+        var go = function () { App.modal = null; then(ok); };
+        UI.setPrimary(go);
+        App.modal = { draw: function () { UI.popup(UI.t('micNoneTitle'), UI.t('micNoneBody'), [{ label: UI.t('gotIt'), act: go }], null); }, onBack: go };
+        return;
+      }
       then(ok);
     });
   }
@@ -96,6 +103,12 @@
   App.startPractice = function (exId) {
     beforeSinging(function () { App.go('play', { kind: 'practice', exercise: exId }); });
   };
+  /** 教程最后点「再试一次」：没有麦克风就先再要一次（这一下是点击，浏览器可以再弹授权框） */
+  App.guideAgain = function () {
+    if (Session.micOpen()) { Session.guideAgain(); return; }
+    Session.requestMic().then(function () { if (App.name === 'play') Session.guideAgain(); });
+  };
+
   /**
    * 设置里点「未授权」：打开一下麦克风，浏览器自己的授权框就会弹出来；
    * 不管结果如何，马上关掉（不在唱歌）
@@ -119,7 +132,13 @@
   }
   global.addEventListener('popstate', function () {
     guarded = false;
-    if (App.modal) { App.modal = null; guardHistory(); return; }   // 先关掉弹出的卡片
+    if (App.modal) {   // 先关掉弹出的卡片；「麦克风未授权」那张按返回就等于点了「知道了」
+      var m = App.modal;
+      App.modal = null;
+      if (m.onBack) m.onBack();
+      guardHistory();
+      return;
+    }
     if (App.name === 'title') return;
     if (!UI.back()) App.go('title');
     guardHistory();

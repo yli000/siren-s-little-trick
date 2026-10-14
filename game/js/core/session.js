@@ -43,7 +43,7 @@
     RESULT_MS: 800,
     MAX_QUIET_RETRIES: 2,
     HUM_MS: 2600,
-    GUIDE: { src: '1 2 3:4', bpm: 92 },   // 「怎么玩」教程：就练这一句
+    GUIDE: { src: '1 2 3:4', bpm: 80 },   // 「怎么玩」教程：就练这一句（比正常歌慢一点）
     NOISE_SETTLE_MS: 150,
     LOW_INPUT_RMS: 0.004      // 一句里最大电平都低于此值 → 提示靠近麦克风
   };
@@ -230,7 +230,7 @@
       judge: null, results: [], ks: [], kws: [], ls: [], tiers: [], trace: [], level: 0,
       quietRetries: 0, again: false, againReason: null, t0: 0, sangFrames: 0,
       finished: null, humSamples: [], next: null, pausedAt: 0, resuming: false,
-      waiting: null, gateFn: null
+      waiting: null, gateFn: null, turnShown: false
     };
   }
 
@@ -301,7 +301,8 @@
     var c = Audio.getAudioContext();
     var playNotes = S.notes.map(function (n) { return { midi: n.midi, startMs: n.startMs, durationMs: n.durMs }; });
     if (c) Audio.playPhrase(playNotes, { when: c.currentTime + CFG.LISTEN_LEAD_S });
-    later(S.kind === 'guide' ? function () { gate('turn', startCountin); } : startCountin,
+    // 教程：「轮到你」只讲第一次，重试时直接倒数
+    later(S.kind === 'guide' && !S.turnShown ? function () { S.turnShown = true; gate('turn', startCountin); } : startCountin,
       CFG.LISTEN_LEAD_S * 1000 + S.phraseMs + CFG.LISTEN_TAIL_MS);
   }
 
@@ -580,9 +581,9 @@
    * 第一次唱之前的教程：只练一句。每一步之前停下来（gate），前端讲这一步要做什么，
    * 玩家点了「好」（proceed）才往下走：
    *   listen  塞壬要唱了，看音块           → 塞壬唱
-   *   turn    轮到你：嗒、嗒，麦克风变红开口 → 倒数、你唱、出档位
+   *   turn    轮到你：嗒、嗒，麦克风变红开口 → 倒数、你唱、出档位（只讲第一次）
    *   quiet   没听到声音（最多两次）        → 塞壬再唱
-   *   end     讲档位；再试一次 / 开始唱      → 结束（不计进度、不抽船）
+   *   end     讲档位（按这一遍的结果说）；再试一次 / 开始唱 → 结束（不计进度、不抽船）
    */
   function startGuide() {
     abortRun();
