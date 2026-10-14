@@ -330,7 +330,7 @@
     var tut = P.kind === 'guide' && (st.phase === 'countin' || st.phase === 'sing');
     if (tut) Gfx.text(g, t_('tutSing'), W / 2, py - 62, { c: C.CREAM, a: 'c', o: C.INK });
     if (st.phase === 'countin' || (st.phase === 'sing' && st.singT < 450 && P.kind !== 'guide')) {
-      // 「轮到你」+ 三格倒数：嗒、嗒、麦克风（第三格就是第一个音）
+      // 「轮到你」+ 三格倒数：嘀、嘀、叮（叮和麦克风那一格就是第一个音）
       var big = !(st.phase === 'countin' && st.phaseT < 100);
       Gfx.text(g, t_('yourTurn'), W / 2, py - (big ? 44 : 34), { c: C.GOLD, s: big ? 2 : 1, a: 'c', o: C.INK, sh: C.INK });
       var lead = st.countinLeadMs;

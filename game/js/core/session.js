@@ -6,9 +6,10 @@
  *
  *   intro   1.2s   歌名卡（只在一首歌开头）；麦克风已开，测底噪
  *   listen         她唱这一句
- *   countin 2 拍   嗒、嗒（按这首歌的拍速）；海浪淡到 0；她的混响尾音被切掉
- *   sing           第 3 拍 = 第一个音该开口的时刻（t = 0）。每 50ms 一帧送进 judge；
- *                  每个音结束后 300ms 判定，发 'note' 事件。**录音期间不播任何声音**
+ *   countin 2 拍   嘀、嘀（按这首歌的拍速）；海浪淡到 0；她的混响尾音被切掉
+ *   sing           第 3 拍 = 第一个音该开口的时刻（t = 0），这一拍响「叮」。每 50ms 一帧送进 judge；
+ *                  每个音结束后 300ms 判定，发 'note' 事件。
+ *                  「叮」会被麦克风录进去：它从喇叭出来的那一小段（约 0.1 秒）的帧不送判定。之后录音期间不播任何声音
  *   result  0.8s   这一句的档位停留；测底噪
  *   → 下一句；整句几乎没出声 → 她再唱一遍（最多两次，之后静静进入下一句）
  *
@@ -230,7 +231,7 @@
       judge: null, results: [], ks: [], kws: [], ls: [], tiers: [], trace: [], level: 0,
       quietRetries: 0, again: false, againReason: null, t0: 0, sangFrames: 0,
       finished: null, humSamples: [], next: null, pausedAt: 0, resuming: false,
-      waiting: null, gateFn: null, turnShown: false
+      waiting: null, gateFn: null, turnShown: false, maskUntil: -Infinity
     };
   }
 
@@ -315,10 +316,17 @@
     var c = Audio.getAudioContext();
     var lead = CFG.COUNTIN_LEAD_MS;
     if (c) {
-      Audio.sfx('tick', c.currentTime + lead / 1000);
-      Audio.sfx('tick', c.currentTime + (lead + S.beatMs) / 1000);
+      Audio.sfx('ready', c.currentTime + lead / 1000);
+      Audio.sfx('ready', c.currentTime + (lead + S.beatMs) / 1000);
+      Audio.sfx('go', c.currentTime + (lead + 2 * S.beatMs) / 1000);
     }
     S.t0 = clock.now() + lead + 2 * S.beatMs;
+    // 「叮」从喇叭出来到响完再留 40ms 余量，这段时间的麦克风帧不送判定（关了音效就没有叮，也就不用躲）。
+    // 最多躲到第一个音的一半，免得很短的第一个音一帧都没有
+    var first = S.notes[0];
+    S.maskUntil = c && !Audio.sfxMuted()
+      ? Math.min(Audio.outputLatencyMs() + Audio.GO_MS + 40, first.startMs + first.durMs * 0.5)
+      : -Infinity;
     var opts = {
       keyFree: S.kind !== 'practice' ? true : S.practice.current().keyFree !== false,
       kInit: S.ks.length ? S.ks[S.ks.length - 1] : 0,
@@ -342,6 +350,7 @@
     if (!S || !S.judge) return;
     var t = clock.now() - S.t0;
     var f = readFrame();
+    if (t < S.maskUntil) { S.level = Math.min(1, (f.rms * mic.gain) / 0.08); return; }   // 「叮」还在响：不算
     if (f.rms > mic.peak) mic.peak = f.rms;
     var fr = S.judge.push({ t: t, hz: f.hz, rms: f.rms });
     S.level = Math.min(1, (f.rms * mic.gain) / 0.08);
@@ -581,7 +590,7 @@
    * 第一次唱之前的教程：只练一句。每一步之前停下来（gate），前端讲这一步要做什么，
    * 玩家点了「好」（proceed）才往下走：
    *   listen  塞壬要唱了，看音块           → 塞壬唱
-   *   turn    轮到你：嗒、嗒，麦克风变红开口 → 倒数、你唱、出档位（只讲第一次）
+   *   turn    轮到你：嘀、嘀、叮，麦克风变红开口 → 倒数、你唱、出档位（只讲第一次）
    *   quiet   没听到声音（最多两次）        → 塞壬再唱
    *   end     讲档位（按这一遍的结果说）；再试一次 / 开始唱 → 结束（不计进度、不抽船）
    */

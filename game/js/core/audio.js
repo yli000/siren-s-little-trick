@@ -12,7 +12,7 @@
  *
  * v2 新增：
  *   · 两条总线：她的歌声（voice）/ 音效与海浪（sfx）。设置里的「音效与海浪」只关后者（审查第 10 条）
- *   · sfx(name, when)：界面音效、倒数「嗒」、出船音效等，全部登记在 scheduledVoices 里，
+ *   · sfx(name, when)：界面音效、倒数「嘀、嘀、叮」、出船音效等，全部登记在 scheduledVoices 里，
  *     stopPlayback() 会一起取消 —— 离开界面后不会再有任何排好的声音响起（v2 修改意见 §2）
  *   · seaStart / seaLevel：海浪底噪（录音时淡到 0，审查第 1 条）
  *
@@ -537,6 +537,10 @@
       case 'great': blip(88, t, 0.09); break;
       case 'good': blip(84, t, 0.07); break;
       case 'tick': blip(79, t, 0.045, 'cue', 0.1); break;
+      // 每句开唱前的倒数：嘀、嘀（准备）、叮↑（开唱）。叮比嘀高一个八度、带一点五度的亮色，
+      // 只有 GO_MS 长：它落在开口那一拍，这一小段的麦克风帧不送判定（见 session.js startCountin）
+      case 'ready': blip(81, t, 0.06, 'ui', 0.13); break;
+      case 'go': blip(93, t, 0.07, 'ui', 0.16); blip(100, t, 0.05, 'ui', 0.05); break;
       case 'horn': blip(45, t, 0.9, 'horn'); blip(52, t, 0.9, 'horn'); break;
       case 'reveal': [72, 76, 79, 84, 88].forEach(function (m, i) { blip(m, t + i * 0.07, 0.25, 'cue', 0.09); }); break;
       case 'star': blip(86, t, 0.05); break;
@@ -597,6 +601,19 @@
   function setSfxMuted(v) {
     sfxMuted = !!v;
     if (sfxBus) sfxBus.gain.value = sfxMuted ? 0 : 1;
+  }
+
+  /** 倒数的「叮」有多长（毫秒） */
+  var GO_MS = 70;
+
+  /**
+   * 声音从排程到真的从喇叭出来要多久（毫秒）。浏览器给不出来时按 50ms 算。
+   * 用来算「叮」被麦克风听见的时间段。
+   */
+  function outputLatencyMs() {
+    if (!ctx) return 50;
+    var s = ctx.outputLatency > 0 ? ctx.outputLatency : (ctx.baseLatency > 0 ? ctx.baseLatency : 0.05);
+    return Math.min(200, Math.round(s * 1000));
   }
 
   /** 还在排程或发声的「她的歌声」声部数（不含音效）——测试用来验证退出后没有残留 */
@@ -752,6 +769,9 @@
     seaStart: seaStart,
     seaLevel: seaLevel,
     setSfxMuted: setSfxMuted,
+    sfxMuted: function () { return sfxMuted; },
+    outputLatencyMs: outputLatencyMs,
+    GO_MS: GO_MS,
     voiceCount: voiceCount,
     setMuted: setMuted,
     isMuted: isMuted,
