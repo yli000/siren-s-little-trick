@@ -225,14 +225,14 @@
     var lines = body ? Gfx.wrap(body, W - 56) : [];
     var h = 34 + lines.length * 14 + (lines.length ? 8 : 0) + 30;
     var y = Math.round((H - h) / 2);
-    Gfx.panel(g, 16, y, W - 32, h, 8, C.NAVY, C.NAVY_LL, C.INK);
+    Gfx.panel(g, 12, y, W - 24, h, 8, C.NAVY, C.NAVY_LL, C.INK);
     Gfx.text(g, title, W / 2, y + 12, { c: C.CREAM, a: 'c' });
     for (var i = 0; i < lines.length; i += 1) Gfx.text(g, lines[i], W / 2, y + 32 + i * 14, { c: '#c6ccf5', a: 'c' });
     var by = y + h - 32;
     if (buttons.length === 1) btn('pop0', W / 2 - 40, by, 80, 24, buttons[0].label, buttons[0].act, { primary: true });
     else {
-      var bw = Math.floor((W - 32 - 24 - 8) / 2);
-      for (var k = 0; k < buttons.length; k += 1) btn('pop' + k, 28 + k * (bw + 8), by, bw, 24, buttons[k].label, buttons[k].act, { primary: !!buttons[k].primary });
+      var bw = Math.floor((W - 24 - 16 - 6) / 2);
+      for (var k = 0; k < buttons.length; k += 1) btn('pop' + k, 20 + k * (bw + 6), by, bw, 24, buttons[k].label, buttons[k].act, { primary: !!buttons[k].primary });
     }
     if (onClose) backAct = onClose;
   }

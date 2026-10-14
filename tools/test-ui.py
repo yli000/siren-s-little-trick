@@ -272,7 +272,7 @@ async def run(args):
         await shot(page, "10a-no-mic-popup")
         await page.keyboard.press("Enter")
         await page.wait_for_timeout(300)
-        R.check("点「我开好了」但还是没授权：留在这张卡上", await page.evaluate("!!__siren.modal && __siren.name !== 'play'"))
+        R.check("点「打开麦克风」但浏览器不再弹框：留在这张卡上，并补上去哪里打开", await page.evaluate("!!__siren.modal && __siren.name !== 'play' && __siren.micHint === true"))
         await page.evaluate("__siren.modal.onBack()")
         R.check("点「先这样」：照常开始唱", await wait_for(page, "__siren.name === 'play'", 3000))
         R.check("拒绝后：这一句每个音都是 Miss", await wait_for(page, "__events.some(e => e.t === 'phase' && e.p.phase === 'result')", 20000)

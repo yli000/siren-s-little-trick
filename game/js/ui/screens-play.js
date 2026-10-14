@@ -328,7 +328,12 @@
     }
     // 教程：倒数一开始就提示「让红线贴着音块走」，开口时不用再读字
     var tut = P.kind === 'guide' && (st.phase === 'countin' || st.phase === 'sing');
-    if (tut) Gfx.text(g, t_('tutSing'), W / 2, py - 62, { c: C.CREAM, a: 'c', o: C.INK });
+    if (tut) {
+      // 在逗号 / 句号处断成两行，不贴着屏幕两边
+      var tl = [];
+      t_('tutSing').replace(/([，。.]) */g, '$1\n').split('\n').forEach(function (part) { if (part) tl = tl.concat(Gfx.wrap(part, W - 24)); });
+      for (var tli = 0; tli < tl.length; tli += 1) Gfx.text(g, tl[tli], W / 2, py - 62 - (tl.length - 1 - tli) * 14, { c: C.CREAM, a: 'c', o: C.INK });
+    }
     if (st.phase === 'countin' || (st.phase === 'sing' && st.singT < 450 && P.kind !== 'guide')) {
       // 「轮到你」+ 三格倒数：嘀、嘀、叮（叮和麦克风那一格就是第一个音）
       var big = !(st.phase === 'countin' && st.phaseT < 100);
@@ -398,9 +403,14 @@
     var by = y + h - 30;
     if (buttons.length === 1) UI.btn('coach0', W / 2 - 36, by, 72, 22, buttons[0].label, buttons[0].act, { primary: true });
     else {
-      var bw = Math.floor((W - 24 - 30) / 2);
-      for (var b = 0; b < buttons.length; b += 1) UI.btn('coach' + b, 24 + b * (bw + 6), by, bw, 22, buttons[b].label, buttons[b].act, { primary: !!buttons[b].primary });
+      var bw = Math.floor((W - 24 - 18) / 2);
+      for (var b = 0; b < buttons.length; b += 1) UI.btn('coach' + b, 18 + b * (bw + 6), by, bw, 22, buttons[b].label, buttons[b].act, { primary: !!buttons[b].primary });
     }
+  }
+
+  /** 「麦克风好像没打开」；浏览器没弹授权框时补上去哪里打开 */
+  function micOffText() {
+    return t_('micOff') + (App().micHint ? (UI.lang() === 'en' ? ' ' : '') + t_('micHow') : '');
   }
 
   function coach(st, t) {
@@ -416,9 +426,9 @@
       box = spotlight([panel], t);
       bubble(t_('tutListen'), box.y0, [ok]);
     } else if (st.waiting === 'turn' && !st.mic) {
-      // 没有麦克风：不讲「变红时开口」，先说清楚怎么打开；打开了这一步就换成正常的说明
+      // 没有麦克风：「打开麦克风」再弹一次授权框；打开了这一步就换成正常的说明
       box = spotlight([micR], t);
-      bubble(t_('tutTurnNoMic'), L.panelY, [
+      bubble(micOffText(), L.panelY, [
         { label: t_('tutContinue'), act: function () { Session.proceed(); } },
         { label: t_('micRetry'), act: function () { App().retryMic(); }, primary: true }
       ]);
@@ -437,7 +447,7 @@
       var again = { label: t_(st.mic ? 'tutAgain' : 'micRetry'), act: function () { App().guideAgain(); } };
       var start = { label: t_('tutStart'), act: function () { Session.proceed(); } };
       box = spotlight([panel], t);
-      if (!st.mic) { again.primary = true; bubble(t_('tutEndNoMic'), box.y0, [start, again]); }
+      if (!st.mic) { again.primary = true; bubble(micOffText(), box.y0, [start, again]); }
       else if (misses * 2 > judged.length) { again.primary = true; bubble(t_('tutEndMiss'), box.y0, [again, start]); }
       else { start.primary = true; bubble(t_('tutEnd'), box.y0, [again, start]); }
     }
