@@ -266,6 +266,9 @@ async def run(args):
         page = await ctx.new_page()
         await page.goto(url)
         await wait_for(page, "!!(window.__siren && __siren.name === 'title')", 5000)
+        R.check("系统是英文：没选过语言就是英文，标签页标题也是英文",
+                await page.evaluate("Siren.Progress.lang() === 'en' && document.title === \"Siren's Little Trick\" && document.documentElement.lang === 'en'"),
+                await page.evaluate("JSON.stringify([Siren.Progress.lang(), document.title, document.documentElement.lang])"))
         await page.evaluate(HOOK)
         await page.evaluate("Siren.Progress.setOnboarded(); __siren.startSong(Siren.SONGS[2])")
         R.check("拒绝后：弹窗说明后果和去哪里打开", await wait_for(page, "!!__siren.modal && __siren.name !== 'play'", 3000))

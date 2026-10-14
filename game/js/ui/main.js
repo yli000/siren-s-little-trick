@@ -195,6 +195,16 @@
   // ---------------------------------------------------------------- 主循环
 
   var last = 0;
+  /** 浏览器标签页的标题和页面语言跟着游戏语言走（没选过语言时就是系统语言） */
+  var shownLang = null;
+  function syncDocLang() {
+    var l = Progress.lang();
+    if (l === shownLang) return;
+    shownLang = l;
+    doc.title = UI.t('title');
+    if (doc.documentElement) doc.documentElement.lang = l === 'en' ? 'en' : 'zh-CN';
+  }
+
   function frame(nowMs) {
     var dt = Math.min(0.05, (nowMs - last) / 1000 || 0);
     last = nowMs;
@@ -203,6 +213,7 @@
     var g = Gfx.ctx();
     g.imageSmoothingEnabled = false;
     UI.beginFrame(t);
+    syncDocLang();
     Gfx.stepParts(dt);
     var scr = Siren.Screens[App.name];
     if (scr) scr.draw(t, dt);
