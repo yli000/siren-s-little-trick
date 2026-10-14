@@ -340,6 +340,50 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
   check('切后台挂起后，回来点一下就解除挂起（容器没发 visibilitychange 也行）', S.Audio.stats().held === false);
 }
 
+// ---------------------------------------------------------------- 6e. 倒数：嘀、嘀、叮；叮那一小段不送判定
+{
+  const { S, clock, events } = await world();
+  const blips = [];
+  const sfx = S.Audio.sfx;
+  S.Audio.sfx = function (name, when) { if (name === 'ready' || name === 'go') blips.push({ name, when }); return sfx.apply(this, arguments); };
+  // 假歌手在「叮」那一刻就出一个很响、很离谱的音（模拟叮被录进去），之后照常唱对
+  const good = singer(S, { latency: 80 });
+  S.Session._setMicStub(() => {
+    const st = S.Session.getState();
+    if (st.phase === 'sing' && st.singT >= 0 && st.singT < 100) return { hz: 523.25, rms: 0.5 };   // C5，和第一个音差几个半音
+    return good();
+  });
+  S.Session.startSong(S.SONGS.find((s) => s.id === 'twinkle'));
+  let early = null;
+  for (let i = 0; i < 400 && early === null; i += 1) {
+    await clock.advance(25);
+    const s2 = S.Session.getState();
+    if (s2.phase === 'sing' && s2.singT > 500) early = s2.trace.filter((p) => p.t < 100).length;
+  }
+  check('叮响的那一小段：麦克风收到的不画、不判', early === 0, `前 0.1 秒的点：${early}`);
+  await clock.advance(9000);
+  const names = blips.map((b) => b.name).join(',');
+  check('每句开唱前：嘀、嘀、叮', names.startsWith('ready,ready,go'), names);
+  const st = S.Session.getState();
+  const gap = blips.length >= 3 ? Math.round((blips[2].when - blips[1].when) * 1000) : 0;
+  check('叮正好在开口那一拍（和嘀隔一拍）', Math.abs(gap - st.beatMs) <= 1, `${gap}ms / 一拍 ${Math.round(st.beatMs)}ms`);
+  await clock.advance(20000);
+  const first = events.filter((e) => e.type === 'note').slice(0, 7).map((e) => e.p.tier);
+  check('叮被录进去也不影响判定：第一句照样是 Perfect / Great', first.length === 7 && first.every((t) => t === 'perfect' || t === 'great'), first.join(' '));
+}
+{
+  const { S, clock } = await world();
+  S.Progress.setSfxOff(true);
+  S.Audio.setSfxMuted(true);
+  const blips = [];
+  const sfx = S.Audio.sfx;
+  S.Audio.sfx = function (name) { if (name === 'go') blips.push(name); return sfx.apply(this, arguments); };
+  S.Session._setMicStub(singer(S));
+  S.Session.startSong(S.SONGS.find((s) => s.id === 'twinkle'));
+  await clock.advance(6000);
+  check('关了音效：叮不响，也就不用躲（那一小段照常收）', S.Session.getState().phase !== 'idle');
+}
+
 // ---------------------------------------------------------------- 7. 抽船：机会一样，没见过的先来，见齐后不连着重复；清除进度
 {
   const { S } = await world();
