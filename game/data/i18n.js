@@ -17,13 +17,21 @@
 
       random: '随便来一首', startHere: '从这首开始',
 
-      herTurn: '她先唱', yourTurn: '轮到你', again: '她再唱一遍', retry: '再来一遍',
+      herTurn: '塞壬先唱', yourTurn: '轮到你', again: '塞壬再唱一遍', retry: '再来一遍',
       lowInput: '没听到声音，靠近一点麦克风',
 
       paused: '暂停', resume: '继续', restart: '重新开始', quit: '退出',
 
       ok: '好', micNone: '麦克风未授权',
-      guideTitle: '跟唱', guideBody: '她先唱一句，轮到你时跟着唱一句', guideGo: '试试',
+      tutTitle: '怎么玩',
+      tutIntro: '塞壬先唱一句，你跟着唱一句，一句一句把一首歌唱完。唱完一首，会有一艘船循着歌声开过来。',
+      tutIntroGo: '先试一句',
+      tutListen: '塞壬要唱了。她唱到哪个音，下面对应的音块就亮起来：越靠右越晚，越高音越高。',
+      tutTurn: '轮到你了。听到「嗒、嗒」两声，麦克风变红时开口，跟着唱刚才那一句。不用唱词，哼或者唱「啦」都行。',
+      tutSing: '让红线贴着音块走',
+      tutQuiet: '没听到你的声音。离麦克风近一点，再试一次。',
+      tutEnd: '每个音唱完，会按唱得多像出现 Perfect、Great、Good 或 Miss。接下来就是一整首歌。',
+      tutAgain: '再试一次', tutStart: '开始唱',
 
       humTitle: '哼一声', humHint: '随便哼一个舒服的音',
 
@@ -34,12 +42,11 @@
 
       practiceTitle: '练习',
       ex_find: '单音', ex_steps: '音阶', ex_ladder: '音域', ex_leaps: '音程', ex_memory: '旋律',
-      learnedKey: '她记住你的调了', exDone: '这组练完了', moreEx: '下一组', toSongs: '去唱歌',
+      learnedKey: '塞壬记住你的调了', exDone: '这组练完了', moreEx: '下一组', toSongs: '去唱歌',
 
       settingsTitle: '设置', sfx: '音效', on: '开', off: '关',
       language: '语言',
       mic: '麦克风', micOk: '已授权', micNo: '未授权',
-      micOffTitle: '取消授权', micOffBody: '请在浏览器的网站设置里关闭麦克风',
       micBlockedTitle: '麦克风未授权', micBlockedBody: '请在浏览器的网站设置里允许使用麦克风',
       changelog: '更新日志', about: '关于',
 
@@ -51,13 +58,21 @@
 
       random: 'Surprise me', startHere: 'Start here',
 
-      herTurn: 'She sings first', yourTurn: 'Your turn', again: 'Once more from her', retry: 'One more time',
+      herTurn: 'The Siren sings first', yourTurn: 'Your turn', again: 'The Siren sings it again', retry: 'One more time',
       lowInput: "Can't hear you. Come a little closer.",
 
       paused: 'Paused', resume: 'Resume', restart: 'Restart', quit: 'Quit',
 
       ok: 'OK', micNone: 'No mic access',
-      guideTitle: 'Sing it back', guideBody: 'She sings a line. On your turn, sing it back.', guideGo: "Let's try",
+      tutTitle: 'How to play',
+      tutIntro: 'The Siren sings a line, then you sing it back, line by line through a song. Finish a song and a ship follows your voice in.',
+      tutIntroGo: 'Try one line',
+      tutListen: 'The Siren is about to sing. Each note lights up a block below: further right is later, higher is higher.',
+      tutTurn: 'Your turn. After two clicks, when the mic turns red, sing that line back. No words needed: hum or sing "la".',
+      tutSing: 'Keep the red line on the blocks',
+      tutQuiet: "Didn't hear you. Move closer to the mic and try again.",
+      tutEnd: 'After each note you get Perfect, Great, Good or Miss, by how close you were. Next comes a whole song.',
+      tutAgain: 'Try again', tutStart: "Let's sing",
 
       humTitle: 'Hum a note', humHint: 'Any note that feels easy',
 
@@ -68,12 +83,11 @@
 
       practiceTitle: 'Practice',
       ex_find: 'Single Notes', ex_steps: 'Scales', ex_ladder: 'Range', ex_leaps: 'Intervals', ex_memory: 'Melodies',
-      learnedKey: "She'll sing in your key now", exDone: 'All done', moreEx: 'Next', toSongs: 'Go sing',
+      learnedKey: "The Siren will sing in your key now", exDone: 'All done', moreEx: 'Next', toSongs: 'Go sing',
 
       settingsTitle: 'Settings', sfx: 'Sound effects', on: 'On', off: 'Off',
       language: 'Language',
       mic: 'Microphone', micOk: 'Allowed', micNo: 'Not allowed',
-      micOffTitle: 'Turn off the mic', micOffBody: "Turn it off in your browser's site settings.",
       micBlockedTitle: 'Mic not allowed', micBlockedBody: "Allow the microphone in your browser's site settings.",
       changelog: "What's new", about: 'About',
 

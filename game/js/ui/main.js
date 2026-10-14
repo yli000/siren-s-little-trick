@@ -45,28 +45,16 @@
     App.params = params || {};
     App.modal = null;
     Gfx.parts.length = 0;
-    // 离开唱歌界面：停掉一切声音。麦克风不马上关——唱完一首接着换一首、再来一遍时，
-    // 手机不用每次都重新打开麦克风（每打开一次，系统或浏览器就会弹一次"正在使用麦克风"）。
-    // 不在唱歌界面待了 MIC_IDLE_MS 才关；切后台立刻关。
+    // 离开唱歌界面：停掉一切声音、关掉麦克风。只在唱的时候开着麦克风，
+    // 手机的"正在使用麦克风"提示就如实告诉玩家现在有没有在听（每次打开都会弹一次，这是系统的提示）。
     var singing = name === 'play';
     if (prev === 'play' && !singing) Session.abort();
-    if (singing) cancelMicRelease(); else scheduleMicRelease();
+    if (!singing) Session.releaseMic();
     scr.enter(App.params, prev);
     guardHistory();
   };
 
-  // ---------------------------------------------------------------- 麦克风什么时候关
-
-  App.MIC_IDLE_MS = 45000;   // 离开唱歌界面多久之后关麦克风（测试里会改短）
-  var micTimer = null;
-  function cancelMicRelease() { if (micTimer) { global.clearTimeout(micTimer); micTimer = null; } }
-  function scheduleMicRelease() {
-    cancelMicRelease();
-    if (!Session.micOpen()) return;
-    micTimer = global.setTimeout(function () { micTimer = null; if (App.name !== 'play') Session.releaseMic(); }, App.MIC_IDLE_MS);
-  }
-
-  // ---------------------------------------------------------------- 唱歌之前：麦克风与第一次的跟唱引导
+  // ---------------------------------------------------------------- 唱歌之前：麦克风与第一次的「怎么玩」
 
   /**
    * 拿麦克风（必须在点击里调用）：没授权过就直接弹浏览器的授权框。拿不到也照常唱，每个音都算 Miss。
@@ -75,19 +63,19 @@
   function withMic(then) {
     var nav = App.nav;
     Session.requestMic().then(function (ok) {
-      if (App.nav !== nav || App.modal) { if (App.name !== 'play') scheduleMicRelease(); return; }
+      if (App.nav !== nav || App.modal) { if (App.name !== 'play') Session.releaseMic(); return; }
       if (!ok && !App.deniedToast) { App.deniedToast = true; UI.toast(UI.t('micNone'), 2.4); }
       then(ok);
     });
   }
 
-  /** 第一次唱之前：一张卡说清楚怎么玩 → 她唱一句、你跟一句 → 进玩家点的那首 */
+  /** 第一次唱之前：一张「怎么玩」的卡 → 点「先试一句」（这一下拿麦克风，浏览器会弹授权框）→ 教程 → 进玩家点的那首 */
   function showGuideCard(go) {
     function ok() { App.modal = null; go(); }
     function close() { App.modal = null; }
-    UI.setPrimary(ok);   // 卡片一出现回车就是「试试」，不必等下一帧画出按钮
+    UI.setPrimary(ok);   // 卡片一出现回车就是「先试一句」，不必等下一帧画出按钮
     App.modal = {
-      draw: function () { UI.popup(UI.t('guideTitle'), UI.t('guideBody'), [{ label: UI.t('guideGo'), act: ok }], close); }
+      draw: function () { UI.popup(UI.t('tutTitle'), UI.t('tutIntro'), [{ label: UI.t('tutIntroGo'), act: ok }], close); }
     };
   }
 
@@ -108,10 +96,13 @@
   App.startPractice = function (exId) {
     beforeSinging(function () { App.go('play', { kind: 'practice', exercise: exId }); });
   };
-  /** 设置里点「未授权」：弹浏览器的授权框；拿到了也不留着（不在唱歌） */
+  /**
+   * 设置里点「未授权」：打开一下麦克风，浏览器自己的授权框就会弹出来；
+   * 不管结果如何，马上关掉（不在唱歌）
+   */
   App.askMic = function (done) {
     Session.requestMic().then(function (ok) {
-      if (App.name !== 'play') scheduleMicRelease();
+      if (App.name !== 'play') Session.releaseMic();
       if (done) done(ok);
     });
   };
@@ -140,7 +131,6 @@
     if (doc.hidden) {
       var scr = Siren.Screens[App.name];
       if (scr && scr.onHide) scr.onHide();
-      cancelMicRelease();
       Session.releaseMic();  // 切后台：麦克风立刻关
       Audio.hold();          // 海浪、音效一起停；回来再响
       return;

@@ -236,27 +236,61 @@ async function untilPhase(S, clock, pred, maxMs = 200000) {
   check('没有麦克风：不走「她再唱一遍」，唱完照常来船', listens === song.phrases.length && !!events.find((e) => e.type === 'finish' && e.p.ship), `听了 ${listens} 遍`);
 }
 
-// ---------------------------------------------------------------- 6b. 第一次的跟唱引导：她唱一句、你跟一句就结束
+// ---------------------------------------------------------------- 6b. 「怎么玩」教程：每一步等玩家点「好」，练一句就结束
+/** 教程停在说明上时替玩家点「好」（end 时按 choice 选「开始唱」或「再试一次」） */
+async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000) {
+  for (let t = 0; t < maxMs; t += 100) {
+    const st = S.Session.getState();
+    if (st.phase === 'done') return;
+    if (st.waiting) {
+      gates.push(st.waiting);
+      if (st.waiting === 'end' && choice(gates) === 'again') S.Session.guideAgain();
+      else S.Session.proceed();
+    }
+    await clock.advance(100);
+  }
+}
 {
   const { S, clock, events } = await world();
   S.Session._setMicStub(singer(S));
   S.Session.startGuide();
-  await clock.advance(20000);
+  await clock.advance(3000);
+  check('教程：没点「好」之前停着，塞壬不唱', S.Session.getState().waiting === 'listen' && !events.some((e) => e.type === 'phase' && e.p.phase === 'listen'));
+  const gates = [];
+  await walkGuide(S, clock, gates);
   const fin = events.find((e) => e.type === 'finish');
-  const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
-  check('引导：一句就结束', fin && fin.p.kind === 'guide' && listens === 1, `听了 ${listens} 遍`);
-  check('引导：有逐音档位，不抽船、不记进度', events.some((e) => e.type === 'note') && !S.Progress.anySongPlayed() && S.Progress.collectedCount() === 0);
+  check('教程：听 → 轮到你 → 档位说明 → 结束', fin && fin.p.kind === 'guide' && gates.join() === 'listen,turn,end', gates.join());
+  check('教程：有逐音档位，不抽船、不记进度', events.some((e) => e.type === 'note') && !S.Progress.anySongPlayed() && S.Progress.collectedCount() === 0);
 }
 {
   const { S, clock, events } = await world();
+  S.Session._setMicStub(singer(S));
+  S.Session.startGuide();
+  const gates = [];
+  await walkGuide(S, clock, gates, (g) => (g.filter((x) => x === 'end').length === 1 ? 'again' : 'start'));
+  const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
+  check('教程最后点「再试一次」：塞壬再唱这一句', listens === 2 && gates.join() === 'listen,turn,end,turn,end', gates.join());
+}
+{
+  const { S, clock } = await world();
   S.Session._setMicStub(singer(S, { quietPhrase: () => true }));
   S.Session.startGuide();
-  await clock.advance(40000);
-  const listens = events.filter((e) => e.type === 'phase' && e.p.phase === 'listen').length;
-  check('引导里没出声：她再唱，最多两次，然后结束', listens === 3 && !!events.find((e) => e.type === 'finish'), `听了 ${listens} 遍`);
+  const gates = [];
+  await walkGuide(S, clock, gates);
+  check('教程里没出声：提示两次「没听到」，然后讲档位', gates.join() === 'listen,turn,quiet,turn,quiet,turn,end', gates.join());
+}
+{
+  const { S, clock } = await world();
+  S.Session._setMicStub(singer(S));
+  S.Session.startGuide();
+  await clock.advance(2000);
+  S.Session.pause();
+  S.Session.resume();
+  await clock.advance(2000);
+  check('教程停在说明上时暂停再继续：还停在这一步', S.Session.getState().waiting === 'listen' && !S.Session.getState().paused);
 }
 
-// ---------------------------------------------------------------- 6c. 暂停不放麦克风；继续 / 重新开始不再重新打开
+// ---------------------------------------------------------------- 6c. 暂停关麦克风，继续时重新打开
 {
   const clock = makeClock();
   const audio = makeAudioStub(clock);
@@ -270,15 +304,10 @@ async function untilPhase(S, clock, pred, maxMs = 200000) {
   S.Session.startSong(S.SONGS.find((s) => s.id === 'mary'));
   await clock.advance(4000);
   S.Session.pause();
-  const keptOnPause = S.Session.micOpen() && stopped === 0;
+  const offOnPause = !S.Session.micOpen() && stopped === 1;
   S.Session.resume();
   await clock.advance(3000);
-  S.Session.pause();
-  S.Session.restart();
-  await clock.advance(3000);
-  check('暂停时麦克风还开着；继续、重新开始都不再打开第二次', ok && keptOnPause && opened === 1 && stopped === 0, `打开 ${opened} 次，关 ${stopped} 次`);
-  S.Session.releaseMic();
-  check('releaseMic：麦克风关掉', !S.Session.micOpen() && stopped === 1);
+  check('暂停：麦克风关掉；继续：重新打开', ok && offOnPause && S.Session.micOpen() && opened === 2, `打开 ${opened} 次，关 ${stopped} 次`);
 }
 
 // ---------------------------------------------------------------- 6d. 音频：切尾音不重建混响，锁屏后 interrupted 也能恢复

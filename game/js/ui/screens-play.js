@@ -145,7 +145,7 @@
       Gfx.drawParts();
 
       // 顶栏：暂停、标题、进度点
-      var title = P.kind === 'song' ? UI.L(P.song.title) : P.kind === 'guide' ? t_('guideTitle') : t_('ex_' + P.exercise);
+      var title = P.kind === 'song' ? UI.L(P.song.title) : P.kind === 'guide' ? t_('tutTitle') : t_('ex_' + P.exercise);
       UI.topBar(title, function () { Session.pause(); }, { pause: true });
       var count = st.phraseCount;
       var dw = Math.min(9, Math.floor(120 / Math.max(1, count)));
@@ -163,6 +163,7 @@
 
       if (st.paused) pauseOverlay();
       else if (P.done) doneOverlay(t);
+      else if (st.waiting) coach(st, t);
       else UI.setBack(function () { Session.pause(); });
     },
     back: function () { Session.pause(); }
@@ -336,9 +337,85 @@
         }
       }
     }
+    if (P.kind === 'guide' && st.phase === 'sing' && st.singT >= 450) {
+      Gfx.text(g, t_('tutSing'), W / 2, py - 40, { c: C.CREAM, a: 'c', o: C.INK });
+    }
     if (st.phase === 'hum') {
       Gfx.text(g, t_('humTitle'), W / 2, py - 44, { c: C.GOLD, s: 2, a: 'c', o: C.INK, sh: C.INK });
       Gfx.text(g, t_('humHint'), W / 2, py - 16, { c: C.CREAM, a: 'c', o: C.INK });
+    }
+  }
+
+  // ---------------------------------------------------------------- 「怎么玩」：每一步之前的说明
+
+  /** 把 rects 以外的地方压暗，rects 画一圈金色的框 */
+  function spotlight(rects, t) {
+    var g = Gfx.ctx();
+    var W = Gfx.W();
+    var H = Gfx.H();
+    var x0 = 999;
+    var y0 = 999;
+    var x1 = -1;
+    var y1 = -1;
+    rects.forEach(function (r) { x0 = Math.min(x0, r[0]); y0 = Math.min(y0, r[1]); x1 = Math.max(x1, r[0] + r[2]); y1 = Math.max(y1, r[1] + r[3]); });
+    g.globalAlpha = 0.62;
+    g.fillStyle = '#080b26';
+    g.fillRect(0, 0, W, y0);
+    g.fillRect(0, y1, W, H - y1);
+    g.fillRect(0, y0, x0, y1 - y0);
+    g.fillRect(x1, y0, W - x1, y1 - y0);
+    g.globalAlpha = 1;
+    var on = Math.floor(t * 2) % 2 === 0;
+    g.fillStyle = on ? C.GOLD : C.GOLD_D;
+    g.fillRect(x0 - 2, y0 - 2, x1 - x0 + 4, 1); g.fillRect(x0 - 2, y1 + 1, x1 - x0 + 4, 1);
+    g.fillRect(x0 - 2, y0 - 2, 1, y1 - y0 + 4); g.fillRect(x1 + 1, y0 - 2, 1, y1 - y0 + 4);
+    return { x0: x0, y0: y0, x1: x1, y1: y1 };
+  }
+
+  /** 说明气泡：放在框的上面，底边一个小尖角指下去 */
+  function bubble(text, below, buttons) {
+    var g = Gfx.ctx();
+    var W = Gfx.W();
+    var lines = Gfx.wrap(text, W - 44);
+    var h = 14 + lines.length * 14 + 6 + 30;
+    var y = Math.max(34, below - 10 - h);
+    Gfx.panel(g, 12, y, W - 24, h, 8, C.PAPER, C.INK, C.INK);
+    for (var i = 0; i < lines.length; i += 1) Gfx.text(g, lines[i], 22, y + 9 + i * 14, { c: C.PAPER_INK });
+    // 尖角
+    for (var k = 0; k < 6; k += 1) { g.fillStyle = C.INK; g.fillRect(W / 2 - 6 + k, y + h + k - 1, 13 - 2 * k, 1); }
+    for (var k2 = 0; k2 < 5; k2 += 1) { g.fillStyle = C.PAPER; g.fillRect(W / 2 - 5 + k2, y + h + k2 - 1, 11 - 2 * k2, 1); }
+    var by = y + h - 30;
+    if (buttons.length === 1) UI.btn('coach0', W / 2 - 36, by, 72, 22, buttons[0].label, buttons[0].act, { primary: true });
+    else {
+      var bw = Math.floor((W - 24 - 30) / 2);
+      for (var b = 0; b < buttons.length; b += 1) UI.btn('coach' + b, 24 + b * (bw + 6), by, bw, 22, buttons[b].label, buttons[b].act, { primary: !!buttons[b].primary });
+    }
+  }
+
+  function coach(st, t) {
+    var L = Gfx.L;
+    var W = Gfx.W();
+    var panel = [8, L.panelY, 164, 62];
+    var micR = [W / 2 - 20, L.micY - 20, 40, 42];
+    UI.block();
+    UI.setBack(function () { Session.pause(); });
+    var ok = { label: t_('ok'), act: function () { Session.proceed(); }, primary: true };
+    var box;
+    if (st.waiting === 'listen') {
+      box = spotlight([panel], t);
+      bubble(t_('tutListen'), box.y0, [ok]);
+    } else if (st.waiting === 'turn') {
+      box = spotlight([panel, micR], t);
+      bubble(t_('tutTurn'), box.y0, [ok]);
+    } else if (st.waiting === 'quiet') {
+      box = spotlight([micR], t);
+      bubble(t_('tutQuiet'), Math.min(box.y0, L.panelY), [ok]);
+    } else if (st.waiting === 'end') {
+      box = spotlight([panel], t);
+      bubble(t_('tutEnd'), box.y0, [
+        { label: t_('tutAgain'), act: function () { Session.guideAgain(); } },
+        { label: t_('tutStart'), act: function () { Session.proceed(); }, primary: true }
+      ]);
     }
   }
 

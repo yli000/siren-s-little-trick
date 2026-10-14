@@ -8,8 +8,8 @@
 每 10ms 读一次 Siren.Session.getState()，按当前该唱的音设振荡器频率——
 于是整条链路（麦克风 → YIN → 逐帧判定 → 画面）都是真的在跑，只有"人"是假的。
 
-覆盖：第一次进入（跟唱说明卡 → 要麦克风 → 引导一句 → 唱完一首 → 出船 → 存档）、暂停 / 继续 / 退出后没有声音、
-麦克风一首接一首只打开一次、练习解锁、设置（语言下拉框）、拒绝麦克风时每个音都是 Miss、三种屏幕尺寸的版面。
+覆盖：第一次进入（「怎么玩」卡 → 要麦克风 → 教程一句 → 唱完一首 → 出船 → 存档）、暂停 / 继续 / 退出后没有声音、
+只在唱的时候开麦克风、练习解锁、设置（语言下拉框）、拒绝麦克风时每个音都是 Miss、三种屏幕尺寸的版面。
 需要：Python 3 + Playwright（Chromium）。
 """
 import argparse
@@ -143,14 +143,25 @@ async def run(args):
         R.check("首页 → 选歌", await wait_for(page, "__siren.name === 'select'", 2000))
         await page.wait_for_timeout(500)
         await tap(page, 90, 32 + 2 + 44 + 20)    # 第一首（小星星）
-        R.check("第一次点歌：先弹出跟唱说明卡（没有麦克风说明卡）", await wait_for(page, "!!__siren.modal", 2000) and await page.evaluate("Siren.Session.micState() !== 'granted'"))
-        await shot(page, "02-guide-card")
+        R.check("第一次点歌：先弹出「怎么玩」（还没要麦克风）", await wait_for(page, "!!__siren.modal", 2000) and await page.evaluate("Siren.Session.micState() !== 'granted'"))
+        await shot(page, "02-howto-card")
         await page.keyboard.press("Enter")
-        R.check("点「试试」：拿麦克风，进入引导", await wait_for(page, "__siren.name === 'play' && Siren.Session.getState().kind === 'guide'", 3000),
-                await page.evaluate("JSON.stringify([__siren.name, !!__siren.modal, Siren.Session.micState(), Siren.Session.getState().kind])"))
-        await wait_for(page, "Siren.Session.getState().phase === 'sing'", 8000)
-        await shot(page, "03-guide")
-        R.check("引导一句后直接进小星星", await wait_for(page, "Siren.Session.getState().kind === 'song'", 15000) and await page.evaluate("Siren.Progress.onboarded()"))
+        R.check("点「先试一句」：拿麦克风，进入教程，停在第一步", await wait_for(page, "__siren.name === 'play' && Siren.Session.getState().waiting === 'listen'", 3000),
+                await page.evaluate("JSON.stringify([__siren.name, !!__siren.modal, Siren.Session.micState(), Siren.Session.getState().waiting])"))
+        await page.wait_for_timeout(300)
+        await shot(page, "03a-tut-listen")
+        await page.keyboard.press("Enter")
+        R.check("教程：塞壬唱完后停在「轮到你」", await wait_for(page, "Siren.Session.getState().waiting === 'turn'", 8000))
+        await page.wait_for_timeout(300)
+        await shot(page, "03b-tut-turn")
+        await page.keyboard.press("Enter")
+        await wait_for(page, "Siren.Session.getState().phase === 'sing' && Siren.Session.getState().singT > 700", 8000)
+        await shot(page, "03c-tut-sing")
+        R.check("教程：唱完停在档位说明", await wait_for(page, "Siren.Session.getState().waiting === 'end'", 10000))
+        await page.wait_for_timeout(300)
+        await shot(page, "03d-tut-end")
+        await page.keyboard.press("Enter")
+        R.check("教程点「开始唱」：直接进小星星", await wait_for(page, "Siren.Session.getState().kind === 'song'", 5000) and await page.evaluate("Siren.Progress.onboarded()"))
         await page.wait_for_timeout(9000)
         await shot(page, "04-sing")
         R.check("唱完一首并出船", await wait_for(page, "__siren.name === 'arrive'", 120000))
@@ -158,7 +169,7 @@ async def run(args):
         good = len([t for t in notes if t in ("perfect", "great")])
         R.check("合成歌手唱得准：Perfect/Great 为主", good >= len(notes) * 0.8, "%d/%d" % (good, len(notes)))
         R.check("唱完立刻存档", await page.evaluate("Siren.Progress.collectedCount()") == 1)
-        R.check("出船时麦克风还开着（接着唱不用再开）", await page.evaluate("__micLive()") == 1)
+        R.check("出船时麦克风已关", await page.evaluate("__micLive()") == 0)
         await page.wait_for_timeout(9000)
         await shot(page, "05-arrive")
         R.check("结尾：介绍卡打完字后出现按钮", await page.evaluate("!!document.getElementById('screen')"))
@@ -174,34 +185,33 @@ async def run(args):
         await page.wait_for_timeout(100)
         R.check("返回键 = 暂停", await page.evaluate("Siren.Session.getState().paused"))
         R.check("暂停后 100ms 内没有她的歌声", await page.evaluate("Siren.Audio.voiceCount()") == 0)
-        R.check("暂停：麦克风还开着", await page.evaluate("__micLive()") == 1)
+        R.check("暂停：麦克风关掉", await page.evaluate("__micLive()") == 0)
         await page.wait_for_timeout(250)
         R.check("暂停：海浪也停", await page.evaluate("Siren.Audio.stats().seaGain") < 0.05, await page.evaluate("Siren.Audio.stats().seaGain"))
         await shot(page, "06-pause")
         await page.keyboard.press("Enter")
         R.check("继续：从这一句的「听她唱」重新开始", await wait_for(page, "Siren.Session.getState().phase === 'listen' && !Siren.Session.getState().paused", 2000))
-        R.check("继续：麦克风没有重新打开", await page.evaluate("__micLive() === 1 && __qa.streams.length === 1"), await page.evaluate("__qa.streams.length"))
+        R.check("继续：重新打开麦克风", await page.evaluate("__micLive()") == 1)
         await page.wait_for_timeout(600)
         await page.evaluate("Siren.Session.pause()")
         await page.wait_for_timeout(100)
         await tap(page, 90, (H - 128) // 2 + 92 + 12)   # 退出
         await page.wait_for_timeout(150)
         R.check("退出：回到选歌，没有残留的歌声", await page.evaluate("__siren.name === 'select' && Siren.Audio.voiceCount() === 0 && Siren.Session.getState().phase === 'idle'"))
-        R.check("退出：麦克风先留着", await page.evaluate("__micLive()") == 1)
+        R.check("退出：麦克风关掉", await page.evaluate("__micLive()") == 0)
 
-        # 暂停 → 重新开始：麦克风还是那一路
+        # 暂停 → 重新开始：重新打开麦克风
         await page.evaluate("__siren.startSong(Siren.SONGS[1])")
         await wait_for(page, "Siren.Session.getState().phase === 'listen'", 5000)
         await page.evaluate("Siren.Session.pause()")
         await page.wait_for_timeout(100)
         await tap(page, 90, (H - 128) // 2 + 62 + 12)   # 重新开始
         await wait_for(page, "Siren.Session.getState().phase === 'sing'", 15000)
-        R.check("暂停 → 重新开始：麦克风还是那一路",
-                await page.evaluate("Siren.Session.getState().mic && __micLive() === 1 && __qa.streams.length === 1"),
-                await page.evaluate("JSON.stringify([Siren.Session.getState().mic, __micLive(), __qa.streams.length])"))
-        await page.evaluate("__siren.MIC_IDLE_MS = 400; __siren.go('select')")
-        await page.wait_for_timeout(700)
-        R.check("离开唱歌界面一会儿：麦克风关掉", await page.evaluate("__micLive()") == 0)
+        R.check("暂停 → 重新开始：麦克风回来了",
+                await page.evaluate("Siren.Session.getState().mic && __micLive() === 1"),
+                await page.evaluate("JSON.stringify([Siren.Session.getState().mic, __micLive()])"))
+        await page.evaluate("__siren.go('select')")
+        await page.wait_for_timeout(200)
 
         # 切后台：自动暂停，整个音频挂起；回来再恢复
         await page.evaluate("__siren.startSong(Siren.SONGS[1])")
@@ -235,13 +245,15 @@ async def run(args):
         print("设置")
         await page.evaluate("__siren.go('settings')")
         await page.wait_for_timeout(400)
-        await tap(page, 90, 76 + 15)    # 语言：打开下拉框
+        # 小窗：卡片高 40 + 5 行 × 30 + 4 × 6 + 12，竖直居中；各行从卡片顶 + 36 开始
+        rows = await page.evaluate("Math.max(10, Math.round((Siren.Gfx.H() - 226) / 2)) + 36")
+        await tap(page, 90, rows + 36 + 15)    # 语言：打开下拉框
         await page.wait_for_timeout(150)
         await shot(page, "09-settings-lang")
-        await tap(page, 126, 106 + 3 + 22 + 10)   # English
+        await tap(page, 116, rows + 36 + 30 + 3 + 22 + 10)   # English
         R.check("语言下拉框：选 English", await page.evaluate("Siren.Progress.lang()") == "en")
         await page.wait_for_timeout(150)
-        await tap(page, 90, 156 + 15)   # 更新日志：展开
+        await tap(page, 90, rows + 36 * 3 + 15)   # 更新日志：展开
         await page.wait_for_timeout(150)
         await shot(page, "09-settings-log")
         R.check("全程没有脚本错误", not errors, errors[:3])
@@ -283,12 +295,13 @@ async def run(args):
         await page.evaluate("__siren.startPractice('find')")
         await wait_for(page, "!!__siren.modal", 2000)
         await page.keyboard.press("Enter")
-        R.check("从练习进跟唱引导", await wait_for(page, "__siren.name === 'play' && Siren.Session.getState().kind === 'guide'", 3000))
+        R.check("从练习进教程", await wait_for(page, "__siren.name === 'play' && Siren.Session.getState().kind === 'guide'", 3000))
         await page.keyboard.press("Escape")
         await page.wait_for_timeout(100)
+        R.check("教程停在说明上时按返回 = 暂停", await page.evaluate("Siren.Session.getState().paused"))
         await tap(page, 90, (H - 128) // 2 + 92 + 12)   # 退出
         await page.wait_for_timeout(200)
-        R.check("引导里退出：回到练习", await page.evaluate("__siren.name === 'practice'"))
+        R.check("教程里退出：回到练习，麦克风关掉", await page.evaluate("__siren.name === 'practice' && __micLive() === 0"))
         await page.reload()
         await wait_for(page, "!!(window.__siren && __siren.name === 'title')", 5000)
         await page.evaluate("Siren.Progress.setOnboarded(); __siren.startSong(Siren.SONGS[0])")

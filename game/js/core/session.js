@@ -1,4 +1,4 @@
-/* 塞壬的小把戏 —— 后端：session.js（v2 流程：一首歌 / 一组练习 / 第一次的跟唱引导）
+/* 塞壬的小把戏 —— 后端：session.js（v2 流程：一首歌 / 一组练习 / 第一次的「怎么玩」教程）
  *
  * 取代 v1 的 game.js（5 句随机旋律 + 船队）。依据 docs/04-v2-修改意见.md §1.4–1.6、§3、§4 与附录审查。
  *
@@ -12,9 +12,8 @@
  *   result  0.8s   这一句的档位停留；测底噪
  *   → 下一句；整句几乎没出声 → 她再唱一遍（最多两次，之后静静进入下一句）
  *
- * 暂停：立刻停掉所有声音和采样（麦克风留着，免得继续时手机再弹一次"正在使用麦克风"）；
+ * 暂停：立刻停掉所有声音、采样，释放麦克风；继续时重新拿麦克风（继续按钮就是手势），
  *       从当前这一句的 listen 重新开始；若这一句已经判完（停在 result），直接进入下一步。
- *       切后台时前端会释放麦克风，继续时重新拿（继续按钮就是手势）。
  * 没有麦克风（没授权）：照常唱，每个音都算 Miss。
  *
  * 前端只通过 getState()（每帧读）和少量事件（note / phase / finish / notice）与本模块交互。
@@ -44,7 +43,7 @@
     RESULT_MS: 800,
     MAX_QUIET_RETRIES: 2,
     HUM_MS: 2600,
-    GUIDE: { src: '1 2 3:4', bpm: 96 },   // 第一次的跟唱引导：就唱这一句
+    GUIDE: { src: '1 2 3:4', bpm: 92 },   // 「怎么玩」教程：就练这一句
     NOISE_SETTLE_MS: 150,
     LOW_INPUT_RMS: 0.004      // 一句里最大电平都低于此值 → 提示靠近麦克风
   };
@@ -230,7 +229,8 @@
       notes: [], phraseMs: 0, beatMs: 600, tonic: 60,
       judge: null, results: [], ks: [], kws: [], ls: [], tiers: [], trace: [], level: 0,
       quietRetries: 0, again: false, againReason: null, t0: 0, sangFrames: 0,
-      finished: null, humSamples: [], next: null, pausedAt: 0, resuming: false
+      finished: null, humSamples: [], next: null, pausedAt: 0, resuming: false,
+      waiting: null, gateFn: null
     };
   }
 
@@ -301,7 +301,8 @@
     var c = Audio.getAudioContext();
     var playNotes = S.notes.map(function (n) { return { midi: n.midi, startMs: n.startMs, durationMs: n.durMs }; });
     if (c) Audio.playPhrase(playNotes, { when: c.currentTime + CFG.LISTEN_LEAD_S });
-    later(startCountin, CFG.LISTEN_LEAD_S * 1000 + S.phraseMs + CFG.LISTEN_TAIL_MS);
+    later(S.kind === 'guide' ? function () { gate('turn', startCountin); } : startCountin,
+      CFG.LISTEN_LEAD_S * 1000 + S.phraseMs + CFG.LISTEN_TAIL_MS);
   }
 
   function startCountin() {
@@ -402,6 +403,19 @@
     var r = { phraseIdx: S.phraseIdx, score: res.score, silent: quiet, tiers: S.tiers.slice(), k: res.k, l: res.l };
     emit('phraseEnd', r);
 
+    if (S.kind === 'guide') {
+      // 教程：没出声就说一声再来（最多两次）；唱了就讲档位，玩家决定再试一次还是开始唱
+      S.again = false;
+      if (quiet && S.quietRetries < CFG.MAX_QUIET_RETRIES) {
+        S.quietRetries += 1;
+        then(function () { gate('quiet', startListen); });
+      } else {
+        S.quietRetries = 0;
+        then(function () { gate('end', finishGuide); });
+      }
+      return;
+    }
+
     if (quiet && S.kind !== 'practice' && S.quietRetries < CFG.MAX_QUIET_RETRIES) {
       // 几乎没出声：不给档位，她再唱一遍（审查第 7 条）。练习不走这条：没出声也算一遍，最多 3 遍
       S.quietRetries += 1;
@@ -419,9 +433,7 @@
       S.ls.push(res.l);
     }
 
-    if (S.kind === 'guide') {
-      then(finishGuide);
-    } else if (S.kind === 'song') {
+    if (S.kind === 'song') {
       S.results.push(r);
       if (S.phraseIdx + 1 < S.phraseCount) then(function () { S.phraseIdx += 1; startListen(); });
       else then(finishSong);
@@ -562,9 +574,16 @@
     }, CFG.HUM_MS);
   }
 
-  // ---------------------------------------------------------------- 跟唱引导
+  // ---------------------------------------------------------------- 「怎么玩」教程
 
-  /** 第一次唱之前：她唱一句，你跟一句，就结束。不计进度、不抽船 */
+  /**
+   * 第一次唱之前的教程：只练一句。每一步之前停下来（gate），前端讲这一步要做什么，
+   * 玩家点了「好」（proceed）才往下走：
+   *   listen  塞壬要唱了，看音块           → 塞壬唱
+   *   turn    轮到你：嗒、嗒，麦克风变红开口 → 倒数、你唱、出档位
+   *   quiet   没听到声音（最多两次）        → 塞壬再唱
+   *   end     讲档位；再试一次 / 开始唱      → 结束（不计进度、不抽船）
+   */
   function startGuide() {
     abortRun();
     S = blank();
@@ -577,7 +596,33 @@
     Audio.seaLevel(0.6, 0.4);
     setPhase('intro');
     sampleNoise(500);
-    later(startListen, 800);
+    loadPhrase();   // 讲音块时就把这一句的音块摆出来
+    later(function () { gate('listen', startListen); }, 600);
+  }
+
+  function gate(name, fn) {
+    if (!S) return;
+    S.waiting = name;
+    S.gateFn = fn;
+    emit('gate', { name: name });
+  }
+
+  /** 教程：玩家看完这一步的说明，点了「好」 */
+  function proceed() {
+    if (!S || !S.waiting || S.paused) return;
+    var fn = S.gateFn;
+    S.waiting = null;
+    S.gateFn = null;
+    fn();
+  }
+
+  /** 教程最后一步点「再试一次」：从塞壬唱这一句重来 */
+  function guideAgain() {
+    if (!S || S.kind !== 'guide' || S.waiting !== 'end' || S.paused) return;
+    S.waiting = null;
+    S.gateFn = null;
+    S.quietRetries = 0;
+    startListen();
   }
 
   function finishGuide() {
@@ -595,6 +640,7 @@
     stopTimers();
     Audio.stopPlayback();
     Audio.seaLevel(0, 0.15);
+    releaseMic();
     S.paused = true;
     S.pausedAt = clock.now();
     S.judge = null;
@@ -619,6 +665,7 @@
       S.resuming = false;
       S.paused = false;
       Audio.ensureAudio();
+      if (S.waiting) return;   // 教程停在说明上：继续等玩家点「好」
       if (S.next) {
         var n = S.next;
         S.next = null;
@@ -635,7 +682,7 @@
     });
   }
 
-  /** 重新开始这一首 / 这一组。⚠️ 要在点击里调用：切过后台时麦克风已释放，这里重新拿 */
+  /** 重新开始这一首 / 这一组。⚠️ 要在点击里调用：暂停时麦克风已释放，这里重新拿 */
   function restart() {
     if (!S) return;
     var mine = S;
@@ -690,6 +737,8 @@
       live: S.judge ? S.judge.live() : { k: 0, l: 0 },
       level: S.level,
       mic: micReady(),
+      waiting: S.waiting,
+      quietRetries: S.quietRetries,
       again: S.again,
       againReason: S.againReason,
       finished: S.finished,
@@ -723,6 +772,8 @@
     startSong: startSong,
     startPractice: startPractice,
     startGuide: startGuide,
+    proceed: proceed,
+    guideAgain: guideAgain,
     pause: pause,
     resume: resume,
     restart: restart,

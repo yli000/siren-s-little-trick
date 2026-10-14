@@ -24,21 +24,6 @@
   /** 双语字段：{ zh, en } → 当前语言 */
   function L(obj) { return obj ? (obj[lang()] || obj.zh) : ''; }
 
-  // ---------------------------------------------------------------- 方案比较（临时）
-  // 首页按钮、设置的版式先做几种给大家挑：地址后加 ?btn=gold|grid|text&set=full|sheet&group=1|0。
-  // 选定之后删掉没选中的，这一段也一起删。
-  var VARIANT_DEFAULT = { btn: 'gold', set: 'full', group: '1' };
-  var variants = (function () {
-    var out = {};
-    var q = global.location && global.location.search ? global.location.search.slice(1).split('&') : [];
-    for (var i = 0; i < q.length; i += 1) {
-      var kv = q[i].split('=');
-      if (VARIANT_DEFAULT[kv[0]] !== undefined && kv[1]) out[kv[0]] = decodeURIComponent(kv[1]);
-    }
-    return out;
-  })();
-  function variant(name) { return variants[name] !== undefined ? variants[name] : VARIANT_DEFAULT[name]; }
-
   // ---------------------------------------------------------------- 点击区域
 
   var regions = [];
@@ -79,7 +64,7 @@
   // ---------------------------------------------------------------- 按钮
 
   /**
-   * 按钮。全游戏一种样式；首页可以用 opt.look = 'gold'（原型里的黄色）或 'text'（没有底板，只有字）。
+   * 按钮。全游戏一种样式；首页用 opt.look = 'gold'（原型里的黄色）。
    * opt.icon 单色图标（会被染成文字色）· opt.locked 暂不可点（刚出现的按钮防误触）· opt.primary 回车触发
    */
   function btn(id, x, y, w, h, label, act, opt) {
@@ -88,13 +73,6 @@
     var down = pressed === id;
     var yy = y + (down ? 2 : 0);
     var locked = !!opt.locked;
-    if (opt.look === 'text') {
-      // 纯文字：描边 + 投影，按下时变金色、下沉 1 像素
-      Gfx.text(g, label, x + w / 2, y + (down ? 1 : 0) + Math.floor((h - Gfx.lineH() * (opt.s || 1)) / 2), { c: down ? C.GOLD : C.CREAM, s: opt.s || 1, a: 'c', o: C.INK, sh: C.INK });
-      if (!locked) hit(id, x, y, w, h, act);
-      if (opt.primary && !locked) primary = act;
-      return;
-    }
     var gold = opt.look === 'gold';
     if (gold) {
       Gfx.panel(g, x, yy, w, h, 6, C.GOLD, C.INK, down ? null : C.INK);
@@ -363,7 +341,6 @@
     t: t, L: L, lang: lang,
     beginFrame: beginFrame, hit: hit, block: block,
     btn: btn, iconBtn: iconBtn, card: card, topBar: topBar, caret: caret, lock: lock, popup: popup,
-    variant: variant,
     scroller: scroller, scrollbar: scrollbar, clearScroll: function () { activeScroll = null; },
     star: star, levelDots: levelDots, ribbon: ribbon, pill: pill,
     toast: toast, drawToast: drawToast,

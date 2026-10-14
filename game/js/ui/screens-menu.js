@@ -40,37 +40,16 @@
     return face;
   }
 
-  /** 首页的四个选项。三种画法先放着比较（?btn=gold|grid|text），选定后只留一种 */
+  /** 首页的四个选项：黄色按钮竖排（按钮矮一点、间距大一点，不那么挤） */
   function titleMenu(items) {
     var W = Gfx.W();
     var H = Gfx.H();
-    var L = Gfx.L;
-    var look = UI.variant('btn');
-    var k;
-    if (look === 'grid') {
-      var gw = 72;
-      var gh = 24;
-      var gx = Math.round((W - 2 * gw - 10) / 2);
-      var gy = Math.max(L.rockFoot + 8, H - 2 * gh - 10 - 18);
-      for (k = 0; k < items.length; k += 1) {
-        UI.btn('m' + k, gx + (k % 2) * (gw + 10), gy + Math.floor(k / 2) * (gh + 10), gw, gh, t_(items[k][0]), items[k][1], { primary: k === 0, look: 'gold' });
-      }
-    } else if (look === 'text') {
-      // 纯文字：两倍字号，矮屏上行距跟着收
-      var th = Math.max(26, Math.min(32, Math.floor((H - L.rockFoot - 10) / items.length)));
-      var ty = H - items.length * th - 8;
-      for (k = 0; k < items.length; k += 1) {
-        UI.btn('m' + k, Math.round(W / 2 - 60), ty + k * th, 120, th, t_(items[k][0]), items[k][1], { primary: k === 0, look: 'text', s: 2 });
-      }
-    } else {
-      // gold（默认）/ navy（原来的）：竖排，按钮矮一点、间距大一点，不那么挤
-      var bw = 96;
-      var bh = 20;
-      var gap = 9;
-      var top = Math.max(L.rockFoot + 6, H - items.length * (bh + gap) - 8);
-      for (k = 0; k < items.length; k += 1) {
-        UI.btn('m' + k, Math.round((W - bw) / 2), top + k * (bh + gap), bw, bh, t_(items[k][0]), items[k][1], { primary: k === 0, look: look === 'navy' ? null : 'gold' });
-      }
+    var bw = 96;
+    var bh = 20;
+    var gap = 9;
+    var top = Math.max(Gfx.L.rockFoot + 6, H - items.length * (bh + gap) - 8);
+    for (var k = 0; k < items.length; k += 1) {
+      UI.btn('m' + k, Math.round((W - bw) / 2), top + k * (bh + gap), bw, bh, t_(items[k][0]), items[k][1], { primary: k === 0, look: 'gold' });
     }
   }
 
@@ -340,9 +319,13 @@
 
   function micGranted() { return Siren.Session.micState() === 'granted'; }
 
-  /** 点麦克风：已授权 → 告诉玩家去哪里关；未授权 → 直接弹浏览器的授权框（被浏览器拒绝过就告诉玩家去哪里开） */
+  /**
+   * 麦克风这一行主要是看状态。
+   * 已授权：网页收不回权限，点了也不会有浏览器的框，所以不能点。
+   * 未授权：打开一下麦克风，浏览器自己的授权框就弹出来（马上再关掉）。
+   * 被浏览器拒绝过：浏览器不会再弹框，网页也触发不了，只能告诉玩家去哪里打开。
+   */
   function micTap() {
-    if (micGranted()) { set.pop = 'off'; return; }
     if (Siren.Session.micPermission() === 'denied') { set.pop = 'blocked'; return; }
     App().askMic(function (ok) { if (!ok && App().name === 'settings') set.pop = 'blocked'; });
   }
@@ -368,7 +351,6 @@
    */
   function settingsRows(x, y0, w) {
     var g = Gfx.ctx();
-    var grouped = UI.variant('group') !== '0';
     var y = y0;
     var gap = 6;
     var langY = 0;
@@ -385,7 +367,7 @@
           extra.draw(cx, cy + 34);
         }
       });
-      UI.hit(id, x, y, w, 30, act);
+      if (act) UI.hit(id, x, y, w, 30, act);
       y += 30 + bodyH + gap;
     }
 
@@ -396,8 +378,7 @@
     langY = y;
     var cur = Siren.LANGS.filter(function (l) { return l.id === Progress.lang(); })[0];
     row('lang', t_('language'), { text: cur ? cur.name : '', caret: set.drop }, function () { set.drop = !set.drop; });
-    row('mic', t_('mic'), micGranted() ? t_('micOk') : t_('micNo'), micTap);
-    if (grouped) y += 8;
+    row('mic', t_('mic'), micGranted() ? t_('micOk') : t_('micNo'), micGranted() ? null : micTap);
 
     var lb = logBody(w);
     row('log', t_('changelog'), { caret: set.open === 'log' }, function () { set.open = set.open === 'log' ? null : 'log'; },
@@ -426,7 +407,7 @@
 
   /** settingsRows 会占多高（小窗要先知道卡片多高） */
   function settingsHeight(w) {
-    var h = 5 * 30 + 4 * 6 + (UI.variant('group') !== '0' ? 8 : 0);
+    var h = 5 * 30 + 4 * 6;
     if (set.open === 'log') h += logHeight(logBody(w)) + 4;
     if (set.open === 'about') h += 54;
     return h;
@@ -455,8 +436,7 @@
 
   function micPopup() {
     var close = function () { set.pop = null; };
-    if (set.pop === 'off') UI.popup(t_('micOffTitle'), t_('micOffBody'), [{ label: t_('ok'), act: close }], close);
-    else UI.popup(t_('micBlockedTitle'), t_('micBlockedBody'), [{ label: t_('ok'), act: close }], close);
+    UI.popup(t_('micBlockedTitle'), t_('micBlockedBody'), [{ label: t_('ok'), act: close }], close);
   }
 
   Screens.settings = {
@@ -469,31 +449,20 @@
       var W = Gfx.W();
       var H = Gfx.H();
       var back = function () { App().go('title'); };
-      var r;
-      var x;
-      var w;
-      if (UI.variant('set') === 'sheet') {
-        // 小窗：首页的海面还在后面，设置是浮在上面的一张卡片
-        Gfx.world('calm', t, null, Gfx.STAGES[0], 1, 0);
-        Gfx.dim(0.55);
-        UI.block(back);
-        x = 18;
-        w = W - 36;
-        var ph = 40 + settingsHeight(w) + 12;
-        var py = Math.max(10, Math.round((H - ph) / 2));
-        Gfx.panel(g, 10, py, W - 20, ph, 8, '#12173c', C.NAVY_LL, C.INK);
-        UI.hit('sheet', 10, py, W - 20, ph, function () {}, { silent: true });   // 点在卡片空白处不算点到外面
-        Gfx.text(g, t_('settingsTitle'), W / 2, py + 12, { c: C.CREAM, a: 'c' });
-        UI.btn('close', W - 34, py + 8, 18, 18, null, back, { icon: 'i_x' });
-        UI.setBack(back);
-        r = settingsRows(x, py + 36, w);
-      } else {
-        g.drawImage(Gfx.dotBg(), 0, 0);
-        UI.topBar(t_('settingsTitle'), back);
-        x = 8;
-        w = 164;
-        r = settingsRows(x, 40, w);
-      }
+      // 小窗：首页的海面还在后面，设置是浮在上面的一张卡片
+      Gfx.world('calm', t, null, Gfx.STAGES[0], 1, 0);
+      Gfx.dim(0.55);
+      UI.block(back);
+      var x = 18;
+      var w = W - 36;
+      var ph = 40 + settingsHeight(w) + 12;
+      var py = Math.max(10, Math.round((H - ph) / 2));
+      Gfx.panel(g, 10, py, W - 20, ph, 8, '#12173c', C.NAVY_LL, C.INK);
+      UI.hit('sheet', 10, py, W - 20, ph, function () {}, { silent: true });   // 点在卡片空白处不算点到外面
+      Gfx.text(g, t_('settingsTitle'), W / 2, py + 12, { c: C.CREAM, a: 'c' });
+      UI.btn('close', W - 34, py + 8, 18, 18, null, back, { icon: 'i_x' });
+      UI.setBack(back);
+      var r = settingsRows(x, py + 36, w);
       if (set.drop) langDrop(x, w, r.langY);
       if (set.pop) micPopup();
     },
