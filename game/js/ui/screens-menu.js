@@ -433,7 +433,7 @@
 
   function micPopup() {
     var close = function () { set.pop = null; };
-    UI.popup(t_('micBlockedTitle'), t_('micBlockedBody'), [
+    UI.popup(t_('micBlockedTitle'), t_('micHow'), [
       { label: t_('ok'), act: close },
       { label: t_('micRetry'), act: function () { App().retryMic(function (ok) { if (ok) set.pop = null; }); }, primary: true }
     ], close);

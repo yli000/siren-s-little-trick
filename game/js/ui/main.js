@@ -22,6 +22,7 @@
     trans: 1,
     nav: 0,               // 每切一次屏幕 +1：异步回来的结果（麦克风授权）据此判断玩家是不是已经走开了
     deniedToast: false,
+    micHint: false,       // 点了「打开麦克风」浏览器却没弹授权框：之后的说明里补上去哪里打开
     dev: /[?&]dev=1/.test(global.location ? global.location.search : '')
   };
   Siren.App = App;
@@ -69,11 +70,11 @@
         App.deniedToast = true;
         var go = function (got) { App.modal = null; then(!!got); };
         var skip = function () { go(false); };
-        // 「我开好了」：玩家去网站设置里改好了，再要一次；还是没有就留在这张卡上
+        // 「打开麦克风」：再要一次，浏览器会再弹授权框；没弹出来（之前点过拒绝、被记住了）就补一句去哪里打开
         var retry = function () { App.retryMic(function (got) { if (got) go(true); }); };
         UI.setPrimary(retry);
         App.modal = { draw: function () {
-          UI.popup(UI.t('micNoneTitle'), UI.t('micNoneBody'), [{ label: UI.t('micSkip'), act: skip }, { label: UI.t('micRetry'), act: retry, primary: true }], null);
+          UI.popup(UI.t('micOff'), App.micHint ? UI.t('micHow') : null, [{ label: UI.t('micSkip'), act: skip }, { label: UI.t('micRetry'), act: retry, primary: true }], null);
         }, onBack: skip };
         return;
       }
@@ -109,18 +110,18 @@
     beforeSinging(function () { App.go('play', { kind: 'practice', exercise: exId }); });
   };
   /**
-   * 「我开好了」：再要一次麦克风（这一下是点击；浏览器没记住拒绝的话会再弹授权框）。
-   * 还是拿不到就提示一下。done(ok)
+   * 「打开麦克风」：再要一次麦克风（这一下是点击，浏览器会再弹授权框）。
+   * 浏览器记住了拒绝就不会再弹：这时 micHint 打开，说明里补上去网站设置里打开的那一句。done(ok)
    */
   App.retryMic = function (done) {
     Session.requestMic().then(function (ok) {
-      if (!ok) UI.toast(UI.t('micStill'), 2);
+      App.micHint = !ok;
       if (ok && App.name !== 'play') Session.releaseMic();   // 不在唱歌：试通了就先关上，唱的时候再开
       if (done) done(ok);
     });
   };
 
-  /** 教程最后点「再试一次」/「我开好了」：没有麦克风就先再要一次，拿到了才重来 */
+  /** 教程最后点「再试一次」/「打开麦克风」：没有麦克风就先再要一次，拿到了才重来 */
   App.guideAgain = function () {
     if (Session.micOpen()) { Session.guideAgain(); return; }
     App.retryMic(function (ok) { if (ok && App.name === 'play') Session.guideAgain(); });
