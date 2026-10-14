@@ -115,7 +115,7 @@ def used_chars():
         "const sb={};sb.window=sb;vm.createContext(sb);"
         "for(const f of process.argv.slice(1))vm.runInContext(fs.readFileSync(f,'utf8'),sb);"
         "const out=[];(function walk(v){if(typeof v==='string')out.push(v);else if(v&&typeof v==='object')for(const k in v)if(k!=='origin')walk(v[k]);})"
-        "([sb.Siren.SONGS,sb.Siren.SHIPS,sb.Siren.I18N,sb.Siren.CHANGELOG]);"
+        "([sb.Siren.SONGS,sb.Siren.SHIPS,sb.Siren.I18N,sb.Siren.LANGS,sb.Siren.CHANGELOG]);"
         "process.stdout.write(out.join('\\n'));"
     )
     text = subprocess.check_output(["node", "-e", script] + [os.path.join(OUT_DATA, f) for f in data_files]).decode("utf-8")

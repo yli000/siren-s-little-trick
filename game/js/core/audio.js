@@ -16,6 +16,14 @@
  *     stopPlayback() 会一起取消 —— 离开界面后不会再有任何排好的声音响起（v2 修改意见 §2）
  *   · seaStart / seaLevel：海浪底噪（录音时淡到 0，审查第 1 条）
  *
+ * v2.1（"黑屏后没声音、声音慢"）：
+ *   · iOS（Safari 和 iOS 上的 Chrome 都是 WebKit）锁屏、来电后 AudioContext 会停在非标准的
+ *     'interrupted' 状态；以前只在 'suspended' 时 resume，于是一直没声音，直到刷新。
+ *     现在任何"不在 running"都 resume；点了一下还起不来，下一次点击就整个重建（kick）。
+ *   · 切后台挂起（hold）后，有的容器回来不发 visibilitychange：点击时只要页面可见就解除挂起。
+ *   · 混响的脉冲响应和她的音色波形只生成一次；切尾音不再拆掉混响器，改为把湿声关掉，
+ *     下一个音开始时再打开。以前每一句开头都要重算 15 万个采样，慢的手机上第一个音会晚。
+ *
  * ⚠️ 本文件是唯一允许触碰 AudioContext 的模块；仍不得触碰 DOM 渲染（D0 硬规则 1）。
  *    不打包任何音频文件，全部代码合成。
  */
@@ -62,6 +70,10 @@
   var reverbHighpass = null;
   var noiseBuffer = null;
   var irBuilt = false;
+  var irBuffer = null;     // 脉冲响应只算一次（跟着 ctx 走）
+  var sirenWave = null;    // 她的音色波形只建一次
+  var resetHandlers = [];  // 音频环境整个重建时通知（麦克风接在旧环境上，要放掉）
+  var stuckSince = 0;      // 点了一下还没恢复 running 的时刻
   var muted = false;
   var sfxBus = null;       // 音效与海浪
   var sfxMuted = false;
@@ -92,23 +104,76 @@
   }
   function wake() {
     held = false;
+    stuckSince = 0;
     if (ctx) ensureAudio();
   }
 
+  function running() { return !!ctx && ctx.state === 'running'; }
+
+  function tryResume() {
+    // 'suspended' 和 WebKit 的 'interrupted' 都要 resume；'closed' 只能重建
+    if (!ctx || held || ctx.state === 'running' || ctx.state === 'closed' || typeof ctx.resume !== 'function') return;
+    var p = ctx.resume();
+    if (p && typeof p.catch === 'function') p.catch(function () { /* 等下一次点击 */ });
+  }
+
   function ensureAudio() {
-    if (!ctx) {
-      var Ctor = global.AudioContext || global.webkitAudioContext;
-      if (!Ctor) throw new Error('本环境不支持 AudioContext');
-      ctx = new Ctor();
-      buildOutputChain();
-    }
-    if (!held && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
-      // 返回 Promise，但调用方可能不 await；这里不阻塞
-      var p = ctx.resume();
-      if (p && typeof p.catch === 'function') p.catch(function () { /* 忽略 */ });
-    }
+    if (!ctx || ctx.state === 'closed') createContext();
+    tryResume();
     return ctx;
   }
+
+  function createContext() {
+    var Ctor = global.AudioContext || global.webkitAudioContext;
+    if (!Ctor) throw new Error('本环境不支持 AudioContext');
+    try { ctx = new Ctor({ latencyHint: 'interactive' }); } catch (e) { ctx = new Ctor(); }
+    var mine = ctx;
+    mine.onstatechange = function () { if (mine === ctx && mine.state === 'running') stuckSince = 0; };
+    chains = {};
+    convolver = null;
+    reverbHighpass = null;
+    irBuilt = false;
+    irBuffer = null;
+    sirenWave = null;
+    noiseBuffer = null;
+    buildOutputChain();
+  }
+
+  /**
+   * 在一次点击里调用：保证声音能出来。
+   * 不在 running 就 resume；如果上一次点击之后过了 0.6 秒还没恢复（iOS 锁屏回来常见），
+   * 就关掉旧的、在这次点击里新建一个——新建必须在手势里，所以只能在这里做。
+   * @param {boolean} visible  页面现在是可见的（用来解除切后台时的挂起）
+   */
+  function kick(visible) {
+    if (visible) held = false;
+    if (!ctx) { ensureAudio(); return; }
+    if (running()) { stuckSince = 0; return; }
+    var now = Date.now();
+    if (ctx.state === 'closed' || (stuckSince && now - stuckSince > 600)) {
+      rebuild();
+      stuckSince = 0;
+      return;
+    }
+    if (!stuckSince) stuckSince = now;
+    tryResume();
+  }
+
+  function rebuild() {
+    var old = ctx;
+    var hadSea = !!sea;
+    scheduledVoices.slice().forEach(function (v) { disposeVoice(v, true); });
+    sea = null;
+    try { if (old && old.state !== 'closed') old.close(); } catch (e) { /* 忽略 */ }
+    createContext();
+    tryResume();
+    if (hadSea) seaStart();
+    for (var i = 0; i < resetHandlers.length; i += 1) {
+      try { resetHandlers[i](); } catch (e) { /* 忽略 */ }
+    }
+  }
+
+  function onReset(fn) { resetHandlers.push(fn); }
 
   /**
    * 保证 AudioContext 已创建**且处于 running**，返回 Promise<ctx>。
@@ -165,18 +230,20 @@
   /** 代码生成脉冲响应（D4.5）——不打包音频文件 */
   function ensureReverb() {
     if (irBuilt || !ctx) return;
-    var sr = ctx.sampleRate;
-    var len = Math.floor(sr * IR.seconds);
-    var ir = ctx.createBuffer(2, len, sr);
-    for (var ch = 0; ch < 2; ch += 1) {
-      var data = ir.getChannelData(ch);
-      for (var i = 0; i < len; i += 1) {
-        var decay = Math.pow(1 - i / len, IR.decay);
-        data[i] = (Math.random() * 2 - 1) * decay;
+    if (!irBuffer) {
+      var sr = ctx.sampleRate;
+      var len = Math.floor(sr * IR.seconds);
+      irBuffer = ctx.createBuffer(2, len, sr);
+      for (var ch = 0; ch < 2; ch += 1) {
+        var data = irBuffer.getChannelData(ch);
+        for (var i = 0; i < len; i += 1) {
+          var decay = Math.pow(1 - i / len, IR.decay);
+          data[i] = (Math.random() * 2 - 1) * decay;
+        }
       }
     }
     convolver = ctx.createConvolver();
-    convolver.buffer = ir;
+    convolver.buffer = irBuffer;
 
     // 混响链上串 highpass @300Hz（否则低频糊成一团）
     var hp = ctx.createBiquadFilter();
@@ -300,10 +367,13 @@
       var osc = ctx.createOscillator();
       // 谐波基线用自定义周期波（≈三角波，音乐盒感）
       if (type === 'siren') {
-        var real = new Float32Array(HARMONICS.length);
-        var imag = new Float32Array(HARMONICS.length);
-        for (var h = 0; h < HARMONICS.length; h += 1) imag[h] = HARMONICS[h];
-        osc.setPeriodicWave(ctx.createPeriodicWave(real, imag, { disableNormalization: false }));
+        if (!sirenWave) {
+          var real = new Float32Array(HARMONICS.length);
+          var imag = new Float32Array(HARMONICS.length);
+          for (var h = 0; h < HARMONICS.length; h += 1) imag[h] = HARMONICS[h];
+          sirenWave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+        }
+        osc.setPeriodicWave(sirenWave);
       } else {
         osc.type = type === 'tick' ? 'square' : type === 'horn' ? 'sawtooth' : type === 'ui' ? 'sine' : 'triangle';
       }
@@ -355,6 +425,11 @@
       ensureReverb();
       chain.output.connect(dryGain);
       if (convolver) chain.output.connect(convolver);
+      if (wetClosed) {
+        // 上次切尾音时把湿声关了：在这个音开始时打开
+        wetClosed = false;
+        try { wetGain.gain.cancelScheduledValues(now); wetGain.gain.setValueAtTime(WET, now); } catch (e) { wetGain.gain.value = WET; }
+      }
     } else {
       chain.output.connect(type === 'siren' ? masterGain : (sfxBus || masterGain));
     }
@@ -553,20 +628,21 @@
     activeVoices = Math.max(0, activeVoices - 1);
   }
 
-  /** 取消当前和未来的音符，同时清除混响尾音；保留已解锁的 AudioContext。 */
+  /**
+   * 取消当前和未来的音符，同时切掉混响尾音；保留已解锁的 AudioContext。
+   * 尾音的切法：把湿声音量立刻关到 0（下一个音开始时再打开），混响器本身留着不重建。
+   */
+  var wetClosed = false;
   function stopPlayback() {
     var voices = scheduledVoices.slice();
     for (var i = 0; i < voices.length; i += 1) disposeVoice(voices[i], true);
-    Object.keys(chains).forEach(function (type) {
-      try { chains[type].input.disconnect(); } catch (e) { /* 忽略 */ }
-      try { chains[type].output.disconnect(); } catch (e) { /* 忽略 */ }
-    });
-    chains = {};
-    try { if (convolver) convolver.disconnect(); } catch (e) { /* 忽略 */ }
-    try { if (reverbHighpass) reverbHighpass.disconnect(); } catch (e) { /* 忽略 */ }
-    convolver = null;
-    reverbHighpass = null;
-    irBuilt = false;
+    if (ctx && wetGain) {
+      try {
+        wetGain.gain.cancelScheduledValues(ctx.currentTime);
+        wetGain.gain.setValueAtTime(0, ctx.currentTime);
+      } catch (e) { wetGain.gain.value = 0; }
+      wetClosed = true;
+    }
   }
 
   /** 释放音频资源（回 HOME / 中止时调用） */
@@ -578,6 +654,7 @@
     return {
       ready: !!ctx,
       state: ctx ? ctx.state : 'none',
+      wetOpen: !wetClosed,
       sampleRate: ctx ? ctx.sampleRate : 0,
       currentTime: ctx ? ctx.currentTime : 0,
       activeVoices: activeVoices,
@@ -662,6 +739,8 @@
 
   Siren.Audio = {
     ensureAudio: ensureAudio,
+    kick: kick,
+    onReset: onReset,
     hold: hold,
     wake: wake,
     ready: ready,

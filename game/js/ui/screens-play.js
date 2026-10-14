@@ -1,4 +1,4 @@
-/* 塞壬的小把戏 —— 前端：screens-play.js（唱歌 / 练习、哼一声、结尾开船）*/
+/* 塞壬的小把戏 —— 前端：screens-play.js（唱歌 / 练习 / 第一次的跟唱引导、结尾开船）*/
 (function (global) {
   'use strict';
 
@@ -19,7 +19,7 @@
 
   var P = {
     kind: null, song: null, exercise: null, prev: null, cur: null, mix: 1, stageIdx: 0,
-    label: null, firstTime: false, vg: 0, done: null, lo: 60, hi: 72, lastEmit: -1, lastPhrase: -1
+    label: null, firstTime: false, vg: 0, done: null, lo: 60, hi: 72, lastEmit: -1, lastPhrase: -1, next: null, from: 'select'
   };
 
   Session.on('note', function (e) {
@@ -40,10 +40,10 @@
     } else if (f.kind === 'practice' && App().name === 'play') {
       P.done = { at: App().clock, learned: f.learnedRange, exercise: f.exercise };
       Audio.sfx('reveal');
-    } else if (f.kind === 'hum' && App().name === 'hum') {
-      H.result = f.midi > 0 ? 'heard' : 'not';
-      H.at = App().clock;
-      if (f.midi > 0) Audio.sfx('great');
+    } else if (f.kind === 'guide' && App().name === 'play') {
+      // 引导就一句：唱完直接进玩家点的那首歌 / 那组练习
+      Progress.setOnboarded();
+      if (P.next) P.next();
     }
   });
 
@@ -87,8 +87,12 @@
       P.vg = 0;
       P.lastEmit = -1;
       P.lastPhrase = -1;
-      P.firstTime = P.kind === 'song' && !Progress.anySongPlayed();
-      if (P.kind === 'song') {
+      P.firstTime = (P.kind === 'song' && !Progress.anySongPlayed()) || P.kind === 'guide';
+      P.next = p.next || null;
+      P.from = p.from === 'practice' ? 'practice' : 'select';
+      if (P.kind === 'guide') {
+        Session.startGuide();
+      } else if (P.kind === 'song') {
         var r = Music.songRange(P.song);
         var shift = Progress.songShift(P.song);
         P.lo = r.lo + shift;
@@ -106,8 +110,8 @@
       var st = Session.getState();
       if (st.phase === 'idle') return;
 
-      // 练习的音高范围每句不同
-      if (P.kind === 'practice' && st.notes && st.notes.length && st.phraseIdx !== P.lastPhrase) {
+      // 练习、引导的音高范围每句不同
+      if (P.kind !== 'song' && st.notes && st.notes.length && st.phraseIdx !== P.lastPhrase) {
         var lo = 999;
         var hi = -999;
         st.notes.forEach(function (n) { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); });
@@ -132,7 +136,7 @@
           }
         }
       }
-      var rec = !st.paused && (st.phase === 'sing' || st.phase === 'countin' || st.phase === 'hum');
+      var rec = !st.paused && st.mic && (st.phase === 'sing' || st.phase === 'countin' || st.phase === 'hum');
       var face = singing && !st.paused ? 'sing' : rec ? 'listen' : 'calm';
       if (rec) P.vg = Math.max(P.vg * Math.pow(0.3, dt), st.level || 0);
       else P.vg *= Math.pow(0.3, dt);
@@ -141,7 +145,7 @@
       Gfx.drawParts();
 
       // 顶栏：暂停、标题、进度点
-      var title = P.kind === 'song' ? UI.L(P.song.title) : t_('ex_' + P.exercise);
+      var title = P.kind === 'song' ? UI.L(P.song.title) : P.kind === 'guide' ? t_('tutTitle') : t_('ex_' + P.exercise);
       UI.topBar(title, function () { Session.pause(); }, { pause: true });
       var count = st.phraseCount;
       var dw = Math.min(9, Math.floor(120 / Math.max(1, count)));
@@ -150,7 +154,8 @@
         var done = d < st.phraseIdx;
         var cur = d === st.phraseIdx;
         g.fillStyle = C.INK; g.fillRect(px - 1, 27, dw - 1, 8);
-        g.fillStyle = done ? C.GOLD : cur ? (Math.floor(t * 3) % 2 ? C.CREAM : '#b9c4ff') : '#46508f';
+        // 进度点只表示唱到哪了，不是成绩：唱过的是米色，不用金色（金色是 Perfect）
+        g.fillStyle = done ? C.CREAM : cur ? (Math.floor(t * 3) % 2 ? C.CREAM : '#8f9be0') : '#46508f';
         g.fillRect(px, 28, dw - 3, 6);
       }
 
@@ -159,6 +164,7 @@
 
       if (st.paused) pauseOverlay();
       else if (P.done) doneOverlay(t);
+      else if (st.waiting) coach(st, t);
       else UI.setBack(function () { Session.pause(); });
     },
     back: function () { Session.pause(); }
@@ -202,8 +208,10 @@
       else {
         // 还没判：亮描边；正在唱、声音也在容差里时整块亮起来（审查第 5 条）
         var near = on && lastPt && Math.abs(lastPt.midi - n.midi) <= 0.5 && st.singT - lastPt.t < 150;
-        fill = near ? '#d9e0ff' : '#2a3270';
-        shade = near ? '#9fb0ff' : '#232a63';
+        // 已经唱过、还在等判定（音结束后约 0.3 秒）：先填上浅色，不让人以为没算
+        var past = head >= 0 && head * st.phraseMs >= n.startMs + n.durMs;
+        fill = near ? '#d9e0ff' : past ? '#5a66b8' : '#2a3270';
+        shade = near ? '#9fb0ff' : past ? '#46508f' : '#232a63';
         outline = C.CREAM;
       }
       g.fillStyle = outline; g.fillRect(gm.x - 1, gm.y - 1 - bump, gm.w + 2, 7 + bump * 2);
@@ -276,7 +284,7 @@
     var g = Gfx.ctx();
     var W = Gfx.W();
     var L = Gfx.L;
-    var rec = !st.paused && (st.phase === 'sing' || st.phase === 'hum' || (st.phase === 'countin' && st.tap));
+    var rec = !st.paused && st.mic && (st.phase === 'sing' || st.phase === 'hum');
     var cx = W / 2;
     var cy = L.micY;
     if (rec) {
@@ -288,9 +296,14 @@
     Gfx.disc(g, cx, cy + 2, 16, C.INK);
     Gfx.disc(g, cx, cy, 16, C.INK);
     Gfx.disc(g, cx, cy, 15, rec ? C.CORAL : C.NAVY_L);
-    if (rec) Gfx.spr(g, 'i_mic', cx - 5, cy - 7); else Gfx.spr(g, 'i_note2', cx - 5, cy - 5);
-    if (st.tap && !st.paused && (st.phase === 'sing' || st.phase === 'countin')) {
-      UI.hit('tapdisc', cx - 22, cy - 22, 44, 44, function () { Session.tap(); }, { silent: true });
+    // 平时是灰色的麦克风，轮到你唱时变红；没有麦克风时画一道斜杠
+    if (rec) Gfx.spr(g, 'i_mic', cx - 5, cy - 7);
+    else Gfx.sprT(g, 'i_mic', cx - 5, cy - 7, st.mic === false && st.phase !== 'idle' ? '#5a66b8' : C.DIM);
+    if (st.mic === false && st.phase !== 'idle') {
+      g.fillStyle = C.CORAL;
+      for (var k = -7; k <= 7; k += 1) g.fillRect(cx + k, cy - k, 2, 1);
+      // 点一下带斜杠的麦克风：再要一次（下一句就用上）
+      if (!st.paused && !st.waiting) UI.hit('micRetry', cx - 20, cy - 20, 40, 40, function () { App().retryMic(); });
     }
   }
 
@@ -313,7 +326,10 @@
       else if (P.firstTime && st.phraseIdx === 0) cap = t_('herTurn');
       if (cap) Gfx.text(g, cap, W / 2, py - 22, { c: '#9ff3e8', a: 'c', o: C.INK });
     }
-    if (st.phase === 'countin' || (st.phase === 'sing' && st.singT < 450)) {
+    // 教程：倒数一开始就提示「让红线贴着音块走」，开口时不用再读字
+    var tut = P.kind === 'guide' && (st.phase === 'countin' || st.phase === 'sing');
+    if (tut) Gfx.text(g, t_('tutSing'), W / 2, py - 62, { c: C.CREAM, a: 'c', o: C.INK });
+    if (st.phase === 'countin' || (st.phase === 'sing' && st.singT < 450 && P.kind !== 'guide')) {
       // 「轮到你」+ 三格倒数：嗒、嗒、麦克风（第三格就是第一个音）
       var big = !(st.phase === 'countin' && st.phaseT < 100);
       Gfx.text(g, t_('yourTurn'), W / 2, py - (big ? 44 : 34), { c: C.GOLD, s: big ? 2 : 1, a: 'c', o: C.INK, sh: C.INK });
@@ -335,11 +351,95 @@
         }
       }
     }
-    // 点按提示放在档位标签（py − 14 往上飘）的上面，不叠在一起
-    if (st.tap && st.phase === 'sing' && st.singT >= 450) Gfx.text(g, t_('tapHint'), W / 2, py - 42, { c: C.CREAM, a: 'c', o: C.INK });
     if (st.phase === 'hum') {
       Gfx.text(g, t_('humTitle'), W / 2, py - 44, { c: C.GOLD, s: 2, a: 'c', o: C.INK, sh: C.INK });
       Gfx.text(g, t_('humHint'), W / 2, py - 16, { c: C.CREAM, a: 'c', o: C.INK });
+    }
+  }
+
+  // ---------------------------------------------------------------- 「怎么玩」：每一步之前的说明
+
+  /** 把 rects 以外的地方压暗，rects 画一圈金色的框 */
+  function spotlight(rects, t) {
+    var g = Gfx.ctx();
+    var W = Gfx.W();
+    var H = Gfx.H();
+    var x0 = 999;
+    var y0 = 999;
+    var x1 = -1;
+    var y1 = -1;
+    rects.forEach(function (r) { x0 = Math.min(x0, r[0]); y0 = Math.min(y0, r[1]); x1 = Math.max(x1, r[0] + r[2]); y1 = Math.max(y1, r[1] + r[3]); });
+    g.globalAlpha = 0.62;
+    g.fillStyle = '#080b26';
+    g.fillRect(0, 0, W, y0);
+    g.fillRect(0, y1, W, H - y1);
+    g.fillRect(0, y0, x0, y1 - y0);
+    g.fillRect(x1, y0, W - x1, y1 - y0);
+    g.globalAlpha = 1;
+    var on = Math.floor(t * 2) % 2 === 0;
+    g.fillStyle = on ? C.GOLD : C.GOLD_D;
+    g.fillRect(x0 - 2, y0 - 2, x1 - x0 + 4, 1); g.fillRect(x0 - 2, y1 + 1, x1 - x0 + 4, 1);
+    g.fillRect(x0 - 2, y0 - 2, 1, y1 - y0 + 4); g.fillRect(x1 + 1, y0 - 2, 1, y1 - y0 + 4);
+    return { x0: x0, y0: y0, x1: x1, y1: y1 };
+  }
+
+  /** 说明气泡：放在框的上面，底边一个小尖角指下去 */
+  function bubble(text, below, buttons) {
+    var g = Gfx.ctx();
+    var W = Gfx.W();
+    var lines = Gfx.wrap(text, W - 44);
+    var h = 14 + lines.length * 14 + 6 + 30;
+    var y = Math.max(34, below - 10 - h);
+    Gfx.panel(g, 12, y, W - 24, h, 8, C.PAPER, C.INK, C.INK);
+    for (var i = 0; i < lines.length; i += 1) Gfx.text(g, lines[i], 22, y + 9 + i * 14, { c: C.PAPER_INK });
+    // 尖角
+    for (var k = 0; k < 6; k += 1) { g.fillStyle = C.INK; g.fillRect(W / 2 - 6 + k, y + h + k - 1, 13 - 2 * k, 1); }
+    for (var k2 = 0; k2 < 5; k2 += 1) { g.fillStyle = C.PAPER; g.fillRect(W / 2 - 5 + k2, y + h + k2 - 1, 11 - 2 * k2, 1); }
+    var by = y + h - 30;
+    if (buttons.length === 1) UI.btn('coach0', W / 2 - 36, by, 72, 22, buttons[0].label, buttons[0].act, { primary: true });
+    else {
+      var bw = Math.floor((W - 24 - 30) / 2);
+      for (var b = 0; b < buttons.length; b += 1) UI.btn('coach' + b, 24 + b * (bw + 6), by, bw, 22, buttons[b].label, buttons[b].act, { primary: !!buttons[b].primary });
+    }
+  }
+
+  function coach(st, t) {
+    var L = Gfx.L;
+    var W = Gfx.W();
+    var panel = [8, L.panelY, 164, 62];
+    var micR = [W / 2 - 20, L.micY - 20, 40, 42];
+    UI.block();
+    UI.setBack(function () { Session.pause(); });
+    var ok = { label: t_('ok'), act: function () { Session.proceed(); }, primary: true };
+    var box;
+    if (st.waiting === 'listen') {
+      box = spotlight([panel], t);
+      bubble(t_('tutListen'), box.y0, [ok]);
+    } else if (st.waiting === 'turn' && !st.mic) {
+      // 没有麦克风：不讲「变红时开口」，先说清楚怎么打开；打开了这一步就换成正常的说明
+      box = spotlight([micR], t);
+      bubble(t_('tutTurnNoMic'), L.panelY, [
+        { label: t_('tutContinue'), act: function () { Session.proceed(); } },
+        { label: t_('micRetry'), act: function () { App().retryMic(); }, primary: true }
+      ]);
+    } else if (st.waiting === 'turn') {
+      box = spotlight([panel, micR], t);
+      bubble(t_('tutTurn'), box.y0, [ok]);
+    } else if (st.waiting === 'quiet') {
+      // 不框麦克风：框住了玩家会以为要按它
+      Gfx.dim(0.62);
+      bubble(t_('tutQuiet'), L.panelY, [ok]);
+    } else if (st.waiting === 'end') {
+      // 按这一遍的结果说：有对上的音就讲颜色；全是 Miss 就说红线要落在音块上；没有麦克风就说清楚
+      // 一半以上是 Miss 就说「没太跟上」，并把「再试一次」放在主位
+      var judged = (st.tiers || []).filter(function (x) { return !!x; });
+      var misses = judged.filter(function (x) { return x === 'miss' || x === 'quiet'; }).length;
+      var again = { label: t_(st.mic ? 'tutAgain' : 'micRetry'), act: function () { App().guideAgain(); } };
+      var start = { label: t_('tutStart'), act: function () { Session.proceed(); } };
+      box = spotlight([panel], t);
+      if (!st.mic) { again.primary = true; bubble(t_('tutEndNoMic'), box.y0, [start, again]); }
+      else if (misses * 2 > judged.length) { again.primary = true; bubble(t_('tutEndMiss'), box.y0, [again, start]); }
+      else { start.primary = true; bubble(t_('tutEnd'), box.y0, [again, start]); }
     }
   }
 
@@ -356,7 +456,7 @@
     var bw = W - 72;
     UI.btn('resume', 36, y + 32, bw, 24, t_('resume'), function () { Session.resume(); }, { primary: true });
     UI.btn('restart', 36, y + 62, bw, 24, t_('restart'), function () { P.lastPhrase = -1; Session.restart(); });
-    UI.btn('quit', 36, y + 92, bw, 24, t_('quit'), function () { App().go(P.kind === 'song' ? 'select' : 'practice'); });
+    UI.btn('quit', 36, y + 92, bw, 24, t_('quit'), function () { App().go(P.kind === 'song' ? 'select' : P.kind === 'guide' ? P.from : 'practice'); });
     UI.setBack(function () { Session.resume(); });
   }
 
@@ -370,64 +470,20 @@
     UI.block();
     var msg = P.done.learned ? t_('learnedKey') : t_('exDone');
     var lines = Gfx.wrap(msg, 128);
-    var h = 40 + lines.length * 14 + 64;
+    var list = Siren.Practice.EXERCISES;
+    var nextEx = null;
+    for (var e = 0; e < list.length - 1; e += 1) if (list[e].id === P.done.exercise) nextEx = list[e + 1].id;
+    var h = 40 + lines.length * 14 + (nextEx ? 64 : 34);
     var y = Math.round((H - h) / 2);
     Gfx.panel(g, 18, y, W - 36, h, 8, C.NAVY, C.GOLD, C.INK);
     Gfx.sprT(g, 'i_check', W / 2 - 4, y + 12, C.GOLD);
     for (var i = 0; i < lines.length; i += 1) Gfx.text(g, lines[i], W / 2, y + 26 + i * 14, { c: C.CREAM, a: 'c' });
     var locked = age < 0.6;
-    UI.btn('moreEx', 30, y + h - 62, W - 60, 24, t_('moreEx'), function () { App().go('practice'); }, { locked: locked, primary: true });
-    UI.btn('toSongs', 30, y + h - 32, W - 60, 24, t_('toSongs'), function () { App().go('select'); }, { locked: locked });
+    if (nextEx) UI.btn('moreEx', 30, y + h - 62, W - 60, 24, t_('moreEx'), function () { App().startPractice(nextEx); }, { locked: locked, primary: true });
+    UI.btn('toSongs', 30, y + h - 32, W - 60, 24, t_('toSongs'), function () { App().go('select'); }, { locked: locked, primary: !nextEx });
     UI.setBack(function () { App().go('practice'); });
     if (Math.random() < 0.15) Gfx.emit({ k: 'spark', x: 20 + Math.random() * 140, y: y - 4 + Math.random() * 10, life: 0.6, c: C.GOLD });
   }
-
-  // ================================================================ 哼一声试试（第一次唱之前）
-
-  var H = { next: null, result: null, at: 0, from: 'select' };
-
-  Screens.hum = {
-    enter: function (p) {
-      H.next = p.next;
-      H.from = p.from === 'practice' ? 'practice' : 'select';
-      H.result = null;
-      Session.startHum();
-    },
-    onHide: function () { Session.abort(); Session.releaseMic(); H.result = 'not'; },
-    draw: function (t) {
-      var g = Gfx.ctx();
-      var W = Gfx.W();
-      var L = Gfx.L;
-      var st = Session.getState();
-      Gfx.world(st.phase === 'hum' ? 'listen' : 'calm', t, null, Gfx.STAGES[0], 1, Math.min(0.8, (st.level || 0) * 0.8));
-      Gfx.drawParts();
-      UI.topBar(null, function () { App().go(H.from); });
-      var py = L.panelY;
-      Gfx.panel(g, 8, py, 164, 62, 8, C.NAVY, C.NAVY_LL, C.INK);
-      if (!H.result) {
-        Gfx.text(g, t_('humTitle'), W / 2, py - 44, { c: C.GOLD, s: 2, a: 'c', o: C.INK, sh: C.INK });
-        Gfx.text(g, t_('humHint'), W / 2, py - 16, { c: C.CREAM, a: 'c', o: C.INK });
-        if (st.phase === 'hum') humTrace(st, py);
-        micDisc(st.phase === 'hum' ? st : { phase: 'idle', level: 0 }, t);
-        return;
-      }
-      var heard = H.result === 'heard';
-      Gfx.text(g, Gfx.fit(heard ? t_('humHeard') : t_('humNot'), W - 16), W / 2, py - 30, { c: heard ? C.GOLD : C.CREAM, a: 'c', o: C.INK });
-      if (heard && Math.random() < 0.2) Gfx.emit({ k: 'heart', x: L.sirenX + 92 + Math.random() * 16, y: L.sirenY + 50, vy: -14, life: 1.2, ph: Math.random() * 6 });
-      var locked = t - H.at < 0.3;
-      if (heard) {
-        UI.btn('humgo', 30, py + 18, W - 60, 26, t_('go'), function () { Progress.setOnboarded(); H.next(); }, { primary: true, locked: locked });
-      } else {
-        UI.btn('humagain', 16, py + 18, 72, 26, t_('tryAgain'), function () {
-          H.result = null;
-          // 切过后台时麦克风已释放：先拿回来（这一下就是手势）
-          Session.requestMic().then(function () { if (App().name === 'hum') Session.startHum(); });
-        }, { primary: true, locked: locked });
-        UI.btn('humskip', 92, py + 18, 72, 26, t_('skip'), function () { Progress.setOnboarded(); H.next(); }, { locked: locked });
-      }
-    },
-    back: function () { App().go(H.from); }
-  };
 
   // ================================================================ 结尾：一艘船循着歌声开过来
 
