@@ -103,11 +103,11 @@
 
       settingsTitle: 'Settings', sfx: 'Sound effects', on: 'On', off: 'Off',
       language: 'Language',
-      mic: 'Microphone', micOk: 'Allowed', micNo: 'Not allowed',
+      mic: 'Mic', micOk: 'Allowed', micNo: 'Not allowed',
       micBlockedTitle: 'Mic not allowed', 
       changelog: "What's new", about: 'About',
 
-      authors: 'Made by', authorNames: 'potato · naitang · meta', version: 'Version'
+      authors: 'Made by', authorNames: 'potato · Rowan · meta', version: 'Version'
     }
   };
 })(typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {}));
