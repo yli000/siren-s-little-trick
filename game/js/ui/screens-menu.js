@@ -393,20 +393,41 @@
         });
       } } : null);
     row('about', t_('about'), { caret: set.open === 'about' }, function () { set.open = set.open === 'about' ? null : 'about'; },
-      set.open === 'about' ? { h: 54, draw: function (cx, cy) {
+      set.open === 'about' ? { h: 58, draw: function (cx, cy) {
         Gfx.text(g, t_('version'), cx + 10, cy, { c: C.DIM });
         Gfx.text(g, Siren.version, cx + w - 10, cy, { c: '#d6dcff', a: 'r' });
         Gfx.text(g, t_('authors'), cx + 10, cy + 18, { c: C.DIM });
-        Gfx.text(g, t_('authorNames'), cx + 10, cy + 34, { c: C.CREAM });
+        authorLine(cx + 10, cy + 34, w - 20);
       } } : null);
     return { h: y - gap - y0, langY: langY };
+  }
+
+  /**
+   * 作者名：名字之间用一个小圆点隔开（原来的「 · 」是全角点加两个空格，占 24 像素，小窗里放不下）。
+   * 像素字不能再缩小，只能把间隔收窄；万一还放不下就换行。
+   */
+  function authorLine(x, y, width) {
+    var g = Gfx.ctx();
+    var names = t_('authorNames').split(' · ');
+    var GAP = 4;
+    var cx = x;
+    var cy = y;
+    for (var i = 0; i < names.length; i += 1) {
+      var nw = Gfx.tw(names[i]);
+      if (i > 0) {
+        if (cx + GAP * 2 + 2 + nw > x + width) { cx = x; cy += 14; }
+        else { g.fillStyle = C.DIM; g.fillRect(cx + GAP, cy + 6, 2, 2); cx += GAP * 2 + 2; }
+      }
+      Gfx.text(g, names[i], cx, cy, { c: C.CREAM });
+      cx += nw;
+    }
   }
 
   /** settingsRows 会占多高（小窗要先知道卡片多高） */
   function settingsHeight(w) {
     var h = 5 * 30 + 4 * 6;
     if (set.open === 'log') h += logHeight(logBody(w)) + 4;
-    if (set.open === 'about') h += 54;
+    if (set.open === 'about') h += 58;
     return h;
   }
 
