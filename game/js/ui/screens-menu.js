@@ -12,7 +12,6 @@
   var t_ = UI.t;
   function App() { return Siren.App; }
   function ships() { return Siren.SHIPS; }
-  function rarity(sh) { return Siren.RARITY[sh.rarity]; }
 
   // ================================================================ 首页
 
@@ -122,17 +121,17 @@
     }
   }
 
-  /** 常客船的小图：来过就是彩色，没来过是剪影 */
-  function regularSlot(song, x, y) {
+  /** 这首歌上次来的那艘船；还没唱过就是一个问号 */
+  function lastShipSlot(song, x, y) {
     var g = Gfx.ctx();
-    var key = song.regular;
+    var key = Progress.songInfo(song.id).lastShip;
     g.fillStyle = C.INK; g.fillRect(x, y, 36, 30);
-    g.fillStyle = Progress.has(key) ? '#3d5bb0' : '#1a2150'; g.fillRect(x + 1, y + 1, 34, 28);
-    if (Progress.has(key)) {
+    g.fillStyle = key ? '#3d5bb0' : '#1a2150'; g.fillRect(x + 1, y + 1, 34, 28);
+    if (key) {
       g.fillStyle = '#57b9f5'; g.fillRect(x + 1, y + 18, 34, 11);
       Gfx.spr(g, 's32_' + key, x + 2, y + 3);
     } else {
-      Gfx.sprT(g, 's32_' + key, x + 2, y + 3, '#2c3672');
+      Gfx.text(g, '?', x + 18, y + 8, { c: '#5a66b8', a: 'c' });
     }
   }
 
@@ -186,7 +185,7 @@
             if (highlight) UI.pill(x + 32, y2 + 22, t_('startHere'), C.GOLD, C.INK);
             else contour(song, x + 34, y2 + 23, 70, 10);
             if (Progress.songInfo(song.id).plays > 0) Gfx.sprT(gg, 'i_check', x + 106, y2 + 26, C.GOLD);
-            regularSlot(song, x + 122, y2 + 5);
+            lastShipSlot(song, x + 122, y2 + 5);
           }, highlight ? { line: C.GOLD } : null);
         })(songs[i], top + 2 + (i + 1) * rowH - off);
       }
@@ -240,7 +239,7 @@
         var cx = 9 + (i % 3) * 55;
         var cy = top + 2 + Math.floor(i / 3) * 48 - off;
         if (cy > H || cy < top - 50) continue;
-        var rc = rarity(sh).color;
+        var rc = Siren.SHIP_STYLE.frame;
         if (Progress.has(sh.key)) { frame(cx, cy, 52, 43, rc[0], rc[1]); seaCell(cx + 2, cy + 2, 48, 39); Gfx.spr(g, 's48_' + sh.key, cx + 2, cy + 2); }
         else { frame(cx, cy, 52, 43, '#3b4a80', '#0c1030'); g.fillStyle = '#1a2150'; g.fillRect(cx + 2, cy + 2, 48, 39); Gfx.sprT(g, 's48_' + sh.key, cx + 2, cy + 2, '#2c3672'); }
         if (cdx.sel < 0 && cy + 43 > top) (function (idx) { UI.hit('cell' + idx, cx, Math.max(top, cy), 52, 43, function () { cdx.sel = idx; Audio.sfx('open'); }); })(i);
@@ -258,9 +257,9 @@
       if (cdx.sel >= 0) {
         var s2 = list[cdx.sel];
         var got = Progress.has(s2.key);
-        var rc2 = rarity(s2).color;
+        var rc2 = Siren.SHIP_STYLE.frame;
         var lines = got ? Gfx.wrap(UI.L(s2.desc), 136) : Gfx.wrap(t_('notYet'), 136).concat(Gfx.wrap(t_('notYet2'), 136));
-        var ch = 76 + 30 + lines.length * 14 + 12;
+        var ch = 76 + 18 + lines.length * 14 + 12;
         var y0 = Math.max(30, Math.round((H - ch) / 2));
         Gfx.dim(0.74);
         UI.block(back);
@@ -269,11 +268,9 @@
         if (got) { seaCell(58, y0 + 12, 64, 52); Gfx.spr(g, 'ship_' + s2.key, 58, y0 + 12); }
         else { g.fillStyle = '#1a2150'; g.fillRect(58, y0 + 12, 64, 52); Gfx.sprT(g, 'ship_' + s2.key, 58, y0 + 12, '#2c3672'); }
         Gfx.text(g, got ? UI.L(s2.name) : '？？？', W / 2, y0 + 72, { c: C.CREAM, a: 'c' });
-        var stars = rarity(s2).stars;
-        var meta = 'No.' + ('0' + (cdx.sel + 1)).slice(-2) + '  ' + t_(s2.rarity) + (got && Progress.visits(s2.key) > 1 ? '  ' + t_('visits', { n: Progress.visits(s2.key) }) : '');
+        var meta = 'No.' + ('0' + (cdx.sel + 1)).slice(-2) + (got && Progress.visits(s2.key) > 1 ? '  ' + t_('visits', { n: Progress.visits(s2.key) }) : '');
         Gfx.text(g, meta, W / 2, y0 + 88, { c: got ? rc2[0] : C.DIM, a: 'c' });
-        for (var sI = 0; sI < 4; sI += 1) UI.star(W / 2 - 17 + sI * 9, y0 + 104, got && sI < stars);
-        for (var li = 0; li < lines.length; li += 1) Gfx.text(g, lines[li], 22, y0 + 116 + li * 14, { c: '#d6dcff' });
+        for (var li = 0; li < lines.length; li += 1) Gfx.text(g, lines[li], 22, y0 + 104 + li * 14, { c: '#d6dcff' });
       }
     },
     back: function () {

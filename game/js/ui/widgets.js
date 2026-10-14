@@ -156,18 +156,6 @@
 
   // ---------------------------------------------------------------- 小部件
 
-  var STAR = ['...K...', '..KYK..', 'KKKYKKK', 'KYYYYYK', '.KYYYK.', 'KYKKKYK', 'KK...KK'];
-  function star(x, y, on) {
-    var g = Gfx.ctx();
-    for (var r = 0; r < 7; r += 1) for (var c = 0; c < 7; c += 1) {
-      var ch = STAR[r][c];
-      if (ch === '.') continue;
-      g.fillStyle = ch === 'K' ? C.INK : (on ? C.GOLD : '#46508f');
-      g.fillRect(x + c, y + r, 1, 1);
-    }
-    if (on) { g.fillStyle = '#fff6c0'; g.fillRect(x + 3, y + 2, 1, 1); }
-  }
-
   /** 难度点：level 个亮点（共 3 个） */
   function levelDots(x, y, level) {
     var g = Gfx.ctx();
@@ -342,7 +330,7 @@
     beginFrame: beginFrame, hit: hit, block: block,
     btn: btn, iconBtn: iconBtn, card: card, topBar: topBar, caret: caret, lock: lock, popup: popup,
     scroller: scroller, scrollbar: scrollbar, clearScroll: function () { activeScroll = null; },
-    star: star, levelDots: levelDots, ribbon: ribbon, pill: pill,
+    levelDots: levelDots, ribbon: ribbon, pill: pill,
     toast: toast, drawToast: drawToast,
     bindInput: bindInput,
     back: function () { if (backAct) backAct(); return !!backAct; },

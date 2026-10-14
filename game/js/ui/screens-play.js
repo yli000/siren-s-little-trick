@@ -498,18 +498,18 @@
     var lineH = 14;
     var cardH = 22 + lines.length * lineH + 6;
     var bigH = 98;
-    var C0 = bigH - 6 + 30 + 4 + 9 + 6 + cardH;
+    var C0 = bigH - 6 + 30 + 10 + cardH;
     var top = 26;
     var bottom = Hh - 44;
     var final = 'big_';
-    if (C0 > bottom - top) { final = 'b88_'; bigH = 72; C0 = bigH - 6 + 30 + 4 + 9 + 6 + cardH; }
+    if (C0 > bottom - top) { final = 'b88_'; bigH = 72; C0 = bigH - 6 + 30 + 10 + cardH; }
     var y = top + Math.max(0, Math.floor((bottom - top - C0) / 2));
     var sz = Gfx.size(final + a.ship.key);
     return {
       final: final, finalW: sz.w, finalH: sz.h,
       shipY: y, cardH: cardH, lineH: lineH,
       hz: y + Math.round(bigH * 0.4),
-      banY: y + bigH - 6, starY: y + bigH - 6 + 34, cardY: y + bigH - 6 + 34 + 15,
+      banY: y + bigH - 6, cardY: y + bigH - 6 + 30 + 10,
       btnY: Hh - 36
     };
   }
@@ -568,7 +568,7 @@
       var ship = Siren.SHIPS[p.ship.index];
       a = {
         i: p.ship.index, ship: ship, isNew: p.ship.isNew, visits: p.ship.visits, song: p.song,
-        t: 0, revealed: false, horn: false, rt: -1, starsShown: 0, stamped: false, typedShown: 0, typeAll: false, doneAt: null
+        t: 0, revealed: false, horn: false, rt: -1, stamped: false, typedShown: 0, typeAll: false, doneAt: null
       };
       a.lines = Gfx.wrap(UI.L(ship.desc), 144);
     },
@@ -617,21 +617,8 @@
       }
 
       var rt = a.t - a.rt;
-      var rc = Siren.RARITY[a.ship.rarity].color;
+      var rc = Siren.SHIP_STYLE.ribbon;
       if (rt > 0.15) { var kb = Math.min(1, (rt - 0.15) / 0.2); UI.ribbon(W / 2, lay.banY - Math.round((1 - kb) * (1 - kb) * 10), UI.L(a.ship.name), rc); }
-      var nStars = Siren.RARITY[a.ship.rarity].stars;
-      var rname = t_(a.ship.rarity);
-      var rowW = 4 * 9 - 2 + 5 + Gfx.tw(rname);
-      var sx0 = Math.round(W / 2 - rowW / 2);
-      if (rt > 0.4) {
-        for (var s2 = 0; s2 < 4; s2 += 1) {
-          var at = 0.4 + s2 * 0.09;
-          if (rt < at) break;
-          if (s2 + 1 > a.starsShown) { a.starsShown = s2 + 1; if (s2 < nStars) Audio.sfx('star'); }
-          UI.star(sx0 + s2 * 9, lay.starY - (rt - at < 0.06 ? 1 : 0), s2 < nStars);
-        }
-        if (rt > 0.76) Gfx.text(g, rname, sx0 + 4 * 9 + 3, lay.starY - 3, { c: rc[0], o: C.INK });
-      }
       if (rt > 0.8) {
         if (!a.stamped) { a.stamped = true; if (a.isNew) Audio.sfx('stamp'); }
         var ks = Math.min(1, (rt - 0.8) / 0.12);

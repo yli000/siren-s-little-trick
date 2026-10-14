@@ -44,7 +44,6 @@
       humTitle: '哼一声', humHint: '随便哼一个舒服的音',
 
       newFind: '新发现!', visitN: '第 {n} 次来', singAgain: '再唱一遍', another: '换一首',
-      common: '普通', rare: '稀有', epic: '史诗', legend: '传说',
 
       codexTitle: '船只图鉴', notYet: '它还没有来过。', notYet2: '再唱几首，也许今晚就来。', visits: '来过 {n} 次',
 
@@ -93,7 +92,6 @@
       humTitle: 'Hum a note', humHint: 'Any note that feels easy',
 
       newFind: 'New!', visitN: 'Visit #{n}', singAgain: 'Sing again', another: 'Another',
-      common: 'Common', rare: 'Rare', epic: 'Epic', legend: 'Legend',
 
       codexTitle: 'Ships', notYet: "It hasn't come yet.", notYet2: 'Sing a few more. Maybe tonight.', visits: '{n} visits',
 
