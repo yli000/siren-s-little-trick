@@ -1,8 +1,6 @@
-"""Source of the 10 ships #22–31 (their SVGs are already appended to ships-svg.json; rerun only to redraw them).
-Drawn in the same conventions as art-source/pixel/ships-svg.json:
+"""The 10 new ships (#22–31), drawn in the same conventions as art-source/pixel/ships-svg.json:
 viewBox -160 -160 320 260, ink outlines #2b2e42, flat fills with a darker clipped shade on the right,
-the shared face set, and the shared foam at the waterline. Writes new-ships-svg.json next to this file;
-to apply a redraw, replace the last 10 entries of ships-svg.json with it and run build.py."""
+the shared face set, and the shared foam at the waterline. Writes new-ships-svg.json next to this file."""
 import json, os
 
 INK = "#2b2e42"
@@ -91,90 +89,119 @@ def wupeng():
     return b
 
 
+GOLD = "#e3b04b"
+BLUE = "#2f5fb3"
+
+
+def rose(x, y, s=1.0):
+    return ('<g transform="translate(%s,%s) scale(%s)"><path d="M-6,3 q-8,-3 -11,3 q7,4 11,-3 Z M6,3 q8,-3 11,3 q-7,4 -11,-3 Z" fill="#8fcf8a"/>'
+            '<circle r="6.5" fill="#f6a3bd"/><path d="M-2.5,1 a3,3 0 1,1 4,1.5" fill="none" stroke="#d9668e" stroke-width="2" stroke-linecap="round"/></g>') % (x, y, s)
+
+
 # ------------------------------------------------------------------ 23 橡皮鸭
 def duck():
-    b = note(132, -86, 0.9)
-    body = "M-124,-34 Q-100,-10 -84,-12 Q-30,-18 20,-14 Q100,-16 106,26 Q102,72 0,74 Q-104,72 -114,30 Q-120,4 -124,-34 Z"
-    b += shape("dk1", body, "#ffd23f", "#f2b705", 60)
-    b += shape("dk2", "M-62,14 Q-20,-8 26,14 Q-12,44 -62,14 Z", "#ffc21a", "#f2b705", 10, 4)
-    b += shape("dk3", "M10,-56 A46,44 0 1,1 102,-56 A46,44 0 1,1 10,-56 Z", "#ffd23f", "#f2b705", 82)
-    b += shape("dk4", "M96,-62 Q126,-70 132,-52 Q122,-40 98,-44 Z", "#ff8a3d", None, None, 4.5)
-    b += shape("dk5", "M98,-44 Q120,-40 124,-32 Q108,-24 94,-34 Z", "#f06a2a", None, None, 4.5)
-    b += '<ellipse cx="72" cy="-72" rx="7" ry="9.5" fill="%s"/><circle cx="74" cy="-76" r="2.8" fill="#fff"/>' % INK
-    b += '<ellipse cx="66" cy="-48" rx="10" ry="5.5" fill="#ff9fb0" opacity=".85"/>'
-    b += '<path d="M-50,30 Q-20,40 10,30" fill="none" stroke="#f2b705" stroke-width="4" stroke-linecap="round" opacity=".7"/>'
+    b = note(124, -106, 0.9, -8)
+    body = "M-112,-8 Q-126,-46 -102,-50 Q-88,-24 -66,-20 Q-10,-30 40,-18 Q106,-8 106,30 Q102,70 0,72 Q-98,70 -110,36 Q-114,16 -112,-8 Z"
+    b += shape("dk1", body, "#ffd84a", "#f5b915", 64)
+    b += shape("dk2", "M-64,14 Q-74,-26 -42,-42 Q-26,-22 -38,8 Q-50,20 -64,14 Z", "#ffc928", "#f5b915", -46, 4)   # waving wing
+    b += shape("dk3", "M-6,-62 A50,50 0 1,1 94,-62 A50,50 0 1,1 -6,-62 Z", "#ffd84a", "#f5b915", 80)                # big round head
+    b += '<path d="M38,-110 Q26,-130 44,-136 Q40,-122 54,-118 Q48,-108 38,-110 Z" fill="#ffd84a" stroke="%s" stroke-width="4" stroke-linejoin="round"/>' % INK
+    for ex in (24, 64):
+        b += ('<ellipse cx="%s" cy="-68" rx="8.5" ry="11.5" fill="%s"/><circle cx="%s" cy="-73" r="3.6" fill="#fff"/>'
+              '<circle cx="%s" cy="-62" r="1.8" fill="#fff"/>') % (ex, INK, ex + 2.5, ex - 3)
+    b += shape("dk4", "M24,-50 Q44,-60 64,-50 Q66,-36 44,-33 Q22,-36 24,-50 Z", "#ff9a3c", "#f07f22", 54, 4)
+    b += '<path d="M31,-46 Q44,-40 57,-46" fill="none" stroke="#d9661a" stroke-width="3" stroke-linecap="round"/>'
+    b += '<ellipse cx="8" cy="-48" rx="9" ry="5.5" fill="#ff9fb0" opacity=".9"/><ellipse cx="80" cy="-48" rx="9" ry="5.5" fill="#ff9fb0" opacity=".9"/>'
     b += foam(130, 80)
     return b
 
 
-# ------------------------------------------------------------------ 24 八音盒船
-def musicbox():
-    b = note(-128, -88, 1.0) + note(-96, -122, 0.8, 8)
-    # lid, open behind the box: pink velvet with a little oval mirror
-    b += shape("mb1", "M-98,-16 L-90,-104 L90,-104 L98,-16 Z", "#c47a45", "#a9653a", 70, 5)
-    b += shape("mb2", "M-80,-24 L-74,-94 L74,-94 L80,-24 Z", "#f4a7b4", "#e88fa0", 40, 3.5)
-    b += '<ellipse cx="0" cy="-74" rx="22" ry="14" fill="#dff3ff" stroke="%s" stroke-width="3"/><path d="M-10,-80 l8,-4 M-4,-72 l12,-6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>' % INK
-    # the little dancer turning on her plinth
-    b += '<ellipse cx="0" cy="-20" rx="16" ry="5" fill="#f7c843" stroke="%s" stroke-width="3"/>' % INK
-    b += '<path d="M0,-22 L0,-36" stroke="%s" stroke-width="4" stroke-linecap="round"/>' % INK
-    b += '<ellipse cx="0" cy="-40" rx="17" ry="6" fill="#ff9fb0" stroke="%s" stroke-width="3"/>' % INK
-    b += '<rect x="-5" y="-56" width="10" height="16" rx="4" fill="#ff9fb0" stroke="%s" stroke-width="3"/>' % INK
-    b += '<path d="M-4,-54 Q-16,-70 -2,-76 M4,-54 Q16,-70 2,-76" fill="none" stroke="%s" stroke-width="3" stroke-linecap="round"/>' % INK
-    b += '<circle cx="0" cy="-63" r="7" fill="#ffe0c8" stroke="%s" stroke-width="3"/>' % INK
-    b += '<path d="M-30,-30 Q0,-14 30,-30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".9"/>'
-    # wind-up key on the side
-    b += stick("M112,22 L132,22", "#f7c843", 5, 11)
-    b += '<path d="M132,22 m0,-4 q10,-16 18,-6 q-4,10 -18,6 Z M132,22 m0,4 q10,16 18,6 q-4,-10 -18,-6 Z" fill="#f7c843" stroke="%s" stroke-width="3.5" stroke-linejoin="round"/>' % INK
-    # the box
-    b += shape("mb3", "M-112,-16 L112,-16 L112,70 Q112,76 104,76 L-104,76 Q-112,76 -112,70 Z", "#c47a45", "#a9653a", 76,
-               5.5, '<rect x="-120" y="-20" width="240" height="14" fill="#f7c843" clip-path="CLIP"/><path d="M-120,-6 L120,-6" stroke="%s" stroke-width="3" clip-path="CLIP"/>' % INK)
-    b += '<path d="M-100,6 L100,6" stroke="#a9653a" stroke-width="3" opacity=".7"/>'
-    b += face("happy", 0, 44, 0.6)
-    b += foam(134, 80)
+# ------------------------------------------------------------------ 24 金鱼缸（原八音盒船）
+def fishbowl():
+    b = '<g transform="translate(0,-12)">'
+    bowl = "M-44,-96 Q-98,-74 -96,-20 Q-92,56 0,58 Q92,56 96,-20 Q98,-74 44,-96 Z"
+    b += '<clipPath id="fb1"><path d="%s"/></clipPath><path d="%s" fill="#e9f8ff"/>' % (bowl, bowl)
+    b += '<path d="M-110,-46 q14,-7 28,0 t28,0 t28,0 t28,0 t28,0 t28,0 t28,0 t28,0 L120,70 L-110,70 Z" fill="#8fd3f7" clip-path="url(#fb1)"/>'
+    b += '<rect x="40" y="-60" width="80" height="130" fill="#7cc6ef" clip-path="url(#fb1)"/>'
+    for x, y, c in ((-70, 46, "#f7c843"), (-50, 50, "#ff9fb0"), (-28, 48, "#9ad46f"), (-6, 51, "#c7b8f0"), (16, 48, "#f7c843"),
+                    (36, 51, "#ff9fb0"), (58, 47, "#9ad46f"), (78, 42, "#c7b8f0"), (-86, 38, "#9ad46f")):
+        b += '<ellipse cx="%s" cy="%s" rx="10" ry="6.5" fill="%s" stroke="%s" stroke-width="2.5" clip-path="url(#fb1)"/>' % (x, y, c, INK)
+    # a tiny castle
+    b += ('<g clip-path="url(#fb1)"><path d="M-64,42 L-64,0 L-58,0 L-58,6 L-52,6 L-52,0 L-46,0 L-46,6 L-40,6 L-40,0 L-34,0 L-34,42 Z" fill="#cfd6e8" stroke="%s" stroke-width="3" stroke-linejoin="round"/>'
+          '<path d="M-56,42 L-56,30 Q-49,22 -42,30 L-42,42 Z" fill="#5a5f80"/>'
+          '<path d="M-49,0 L-49,-16 L-38,-11 L-49,-7" fill="#f0584f" stroke="%s" stroke-width="2.5" stroke-linejoin="round"/></g>') % (INK, INK)
+    b += '<path d="M64,48 Q52,28 64,12 Q74,-4 62,-20" fill="none" stroke="%s" stroke-width="9" stroke-linecap="round" clip-path="url(#fb1)"/>' % INK
+    b += '<path d="M64,48 Q52,28 64,12 Q74,-4 62,-20" fill="none" stroke="#6bbf6a" stroke-width="4" stroke-linecap="round" clip-path="url(#fb1)"/>'
+    # the goldfish, looking out
+    b += ('<g transform="translate(6,-8)">'
+          '<path d="M-24,0 L-46,-18 Q-40,0 -46,18 Z" fill="#ff8a3d" stroke="%s" stroke-width="4" stroke-linejoin="round"/>'
+          '<path d="M-6,-14 Q2,-30 14,-16 Z" fill="#ff8a3d" stroke="%s" stroke-width="3.5" stroke-linejoin="round"/>'
+          '<ellipse cx="0" cy="0" rx="28" ry="18" fill="#ff8a3d" stroke="%s" stroke-width="4.5"/>'
+          '<path d="M-14,-12 Q-20,0 -14,12" fill="none" stroke="#f26b1f" stroke-width="3" stroke-linecap="round"/>'
+          '<ellipse cx="12" cy="-4" rx="5" ry="6.5" fill="%s"/><circle cx="13.5" cy="-7" r="2" fill="#fff"/>'
+          '<path d="M18,6 Q22,9 26,5" fill="none" stroke="%s" stroke-width="3" stroke-linecap="round"/>'
+          '<ellipse cx="4" cy="6" rx="5" ry="3" fill="#ff9fb0" opacity=".9"/></g>') % (INK, INK, INK, INK, INK)
+    for x, y, r in ((40, -26, 4), (46, -42, 5.5), (38, -60, 3.5)):
+        b += '<circle cx="%s" cy="%s" r="%s" fill="#fff" fill-opacity=".7" stroke="%s" stroke-width="2"/>' % (x, y, r, INK)
+    b += '<path d="%s" fill="none" stroke="%s" stroke-width="5" stroke-linejoin="round"/>' % (bowl, INK)
+    b += '<path d="M-74,-56 Q-86,-18 -74,18" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" opacity=".9"/><circle cx="-66" cy="-70" r="4" fill="#fff"/>'
+    b += '<ellipse cx="0" cy="-96" rx="46" ry="8" fill="#f2fbff" stroke="%s" stroke-width="4.5"/>' % INK
+    b += "</g>"
+    b += foam(118, 80)
     return b
 
 
-# ------------------------------------------------------------------ 25 茶杯船
+# ------------------------------------------------------------------ 25 茶杯船：英式骨瓷，带碟子
 def teacup():
     b = ""
-    cup = "M-102,-20 Q-100,52 -40,68 L40,68 Q100,52 102,-20 Z"
-    pattern = ('<path d="M-104,10 Q0,30 104,10" fill="none" stroke="#5b8fd9" stroke-width="7" clip-path="CLIP"/>'
-               + "".join('<circle cx="%s" cy="%s" r="3.2" fill="#5b8fd9" clip-path="CLIP"/>' % (x, 22 + abs(x) * -0.06 + 8) for x in range(-80, 90, 32)))
-    b += shape("tc1", cup, "#ffffff", "#dde6f3", 66, 5.5, pattern)
-    # broken handle: a stub with a jagged end
-    b += '<path d="M100,-8 Q124,-12 126,6 L119,4 L122,12 L114,10 Q112,2 98,6 Z" fill="#fff" stroke="%s" stroke-width="4.5" stroke-linejoin="round"/>' % INK
-    # rim and inside, with the ring of old tea
-    b += '<ellipse cx="0" cy="-20" rx="104" ry="18" fill="#fff" stroke="%s" stroke-width="5"/>' % INK
-    b += '<ellipse cx="0" cy="-18" rx="90" ry="11" fill="#efe6d2"/>'
-    b += '<ellipse cx="2" cy="-16" rx="66" ry="7" fill="none" stroke="#c9a06a" stroke-width="3.5"/>'
-    b += '<path d="M-94,-24 Q-60,-34 -20,-35" fill="none" stroke="#5b8fd9" stroke-width="3" stroke-linecap="round" opacity=".6"/>'
-    b += face("calm", -6, 50, 0.58)
-    b += foam(124, 80)
+    b += '<path d="M-128,28 Q-124,52 0,56 Q124,52 128,28 Z" fill="#e3e0ee" stroke="%s" stroke-width="4.5" stroke-linejoin="round"/>' % INK
+    b += '<ellipse cx="0" cy="28" rx="130" ry="21" fill="#fff" stroke="%s" stroke-width="5"/>' % INK
+    b += '<ellipse cx="0" cy="28" rx="120" ry="16" fill="none" stroke="%s" stroke-width="3"/>' % GOLD
+    import math
+    for k in range(14):
+        t = math.pi * 2 * k / 14 + 0.2
+        b += rose(round(105 * math.cos(t), 1), round(28 + 12 * math.sin(t), 1), 0.55)
+    b += '<ellipse cx="0" cy="28" rx="64" ry="9" fill="#f1eef7"/>'
+    b += '<rect x="-34" y="14" width="68" height="16" rx="6" fill="#fff" stroke="%s" stroke-width="4"/><path d="M-30,22 L30,22" stroke="%s" stroke-width="2.5"/>' % (INK, GOLD)
+    cup = "M-88,-62 Q-86,-10 -44,12 Q-36,18 -32,20 L32,20 Q36,18 44,12 Q86,-10 88,-62 Z"
+    pattern = ('<path d="M-92,-50 Q0,-36 92,-50" fill="none" stroke="%s" stroke-width="3" clip-path="CLIP"/>'
+               '<path d="M-64,2 Q0,16 64,2" fill="none" stroke="%s" stroke-width="2.5" clip-path="CLIP"/>') % (GOLD, GOLD)
+    pattern += "".join(rose(x, y, 0.9) for x, y in ((-62, -36), (-26, -31), (26, -31), (62, -36)))
+    b += shape("tc1", cup, "#ffffff", "#ece9f4", 58, 5.5, pattern)
+    # the handle broke off: two little stubs with jagged ends
+    b += '<path d="M85,-48 Q100,-52 107,-44 L101,-42 L105,-37 L97,-38 Q92,-42 83,-40 Z" fill="#fff" stroke="%s" stroke-width="4" stroke-linejoin="round"/>' % INK
+    b += '<path d="M66,-10 Q80,-6 85,2 L78,2 L81,8 L73,6 Q68,0 58,-2 Z" fill="#fff" stroke="%s" stroke-width="4" stroke-linejoin="round"/>' % INK
+    b += '<ellipse cx="0" cy="-62" rx="90" ry="15" fill="#fff" stroke="%s" stroke-width="5"/>' % INK
+    b += '<ellipse cx="0" cy="-61" rx="78" ry="10" fill="#efe3c8"/>'
+    b += '<ellipse cx="3" cy="-60" rx="56" ry="6" fill="none" stroke="#c99a5c" stroke-width="3"/>'
+    b += '<ellipse cx="0" cy="-62" rx="85" ry="12.5" fill="none" stroke="%s" stroke-width="2.5"/>' % GOLD
+    b += face("calm", 0, 4, 0.5)
+    b += foam(134, 82)
     return b
 
 
-# ------------------------------------------------------------------ 26 帆布鞋
-def sneaker():
-    b = '<g transform="translate(0,-22)">'
-    upper = "M-122,40 Q-128,-14 -98,-28 L-40,-32 Q10,-18 44,-4 Q110,8 128,34 L128,40 Z"
-    b += shape("sn1", upper, "#f0584f", "#d84a42", 70)
-    b += '<path d="M-106,-26 Q-72,-40 -38,-30 Q-72,-18 -106,-26 Z" fill="#5a2a35" stroke="%s" stroke-width="4" stroke-linejoin="round"/>' % INK
-    b += shape("sn2", "M58,40 Q62,6 92,8 Q124,14 128,40 Z", "#ffffff", "#dde6f3", 112, 4.5)
-    sole = "M-124,38 L130,38 L130,52 Q128,68 104,68 L-104,68 Q-124,68 -124,52 Z"
-    b += shape("sn3", sole, "#ffffff", "#dde6f3", 96, 5,
-               '<path d="M-130,48 L134,48" stroke="#4a6fd1" stroke-width="4" clip-path="CLIP"/>')
-    holes = [(-30, -22), (-10, -16), (10, -10), (30, -4)]
-    b += '<path d="M-30,-22 L-10,-16 M-30,-22 L-6,-24 M-10,-16 L10,-10 M-10,-16 L14,-18 M10,-10 L30,-4" stroke="#fff" stroke-width="4" stroke-linecap="round"/>'
-    b += "".join('<circle cx="%s" cy="%s" r="4" fill="#fff" stroke="%s" stroke-width="2.5"/>' % (x, y, INK) for x, y in holes)
-    # the bow
-    b += '<path d="M-14,-40 Q-22,-18 -30,-14 M-14,-40 Q-2,-20 4,-18" fill="none" stroke="%s" stroke-width="8" stroke-linecap="round"/>' % INK
-    b += '<path d="M-14,-40 Q-22,-18 -30,-14 M-14,-40 Q-2,-20 4,-18" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>'
-    b += '<ellipse cx="-30" cy="-46" rx="15" ry="9" transform="rotate(-18 -30 -46)" fill="#fff" stroke="%s" stroke-width="4"/>' % INK
-    b += '<ellipse cx="2" cy="-46" rx="15" ry="9" transform="rotate(18 2 -46)" fill="#fff" stroke="%s" stroke-width="4"/>' % INK
-    b += '<circle cx="-14" cy="-42" r="6" fill="#fff" stroke="%s" stroke-width="3.5"/>' % INK
-    b += face("happy", -66, 24, 0.5)
-    b += "</g>"
-    b += foam(136, 80)
+# ------------------------------------------------------------------ 备选：青花盖碗（选它的话文案要改，盖碗没有把手）
+def gaiwan():
+    b = ""
+    b += '<path d="M-124,28 Q-120,50 0,54 Q120,50 124,28 Z" fill="#e3e8f4" stroke="%s" stroke-width="4.5" stroke-linejoin="round"/>' % INK
+    b += '<ellipse cx="0" cy="28" rx="126" ry="20" fill="#fff" stroke="%s" stroke-width="5"/>' % INK
+    b += '<ellipse cx="0" cy="28" rx="114" ry="15" fill="none" stroke="%s" stroke-width="3.5"/>' % BLUE
+    b += '<ellipse cx="0" cy="28" rx="66" ry="9" fill="#eef3fb"/>'
+    b += '<rect x="-36" y="14" width="72" height="16" rx="5" fill="#fff" stroke="%s" stroke-width="4"/><path d="M-32,22 L32,22" stroke="%s" stroke-width="2.5"/>' % (INK, BLUE)
+    bowl = "M-82,-44 Q-80,0 -42,16 Q-36,20 -32,22 L32,22 Q36,20 42,16 Q80,0 82,-44 Z"
+    petals = "".join('<path d="M%s,20 q10,-22 20,0" fill="none" stroke="%s" stroke-width="3" clip-path="CLIP"/>' % (x, BLUE) for x in range(-90, 90, 20))
+    clouds = ('<path d="M-74,-22 q8,-12 18,-3 q7,-10 16,0 M40,-22 q8,-12 18,-3 q7,-10 16,0" fill="none" stroke="%s" stroke-width="3.5" stroke-linecap="round" clip-path="CLIP"/>'
+              '<path d="M-90,-36 Q0,-24 90,-36" fill="none" stroke="%s" stroke-width="5" clip-path="CLIP"/>') % (BLUE, BLUE)
+    b += shape("gw1", bowl, "#ffffff", "#e8eef8", 60, 5.5, petals + clouds)
+    # the lid, sitting a little crooked
+    lid = "M-74,-44 Q-66,-74 0,-78 Q66,-74 74,-44 Q0,-36 -74,-44 Z"
+    lidpat = ('<path d="M-80,-50 Q0,-40 80,-50" fill="none" stroke="%s" stroke-width="4" clip-path="CLIP"/>'
+              '<path d="M-34,-62 q8,-10 16,-2 q6,-8 14,0 M8,-62 q8,-10 16,-2 q6,-8 14,0" fill="none" stroke="%s" stroke-width="3" stroke-linecap="round" clip-path="CLIP"/>') % (BLUE, BLUE)
+    b += '<ellipse cx="0" cy="-44" rx="82" ry="12" fill="#fff" stroke="%s" stroke-width="5"/>' % INK
+    b += '<g transform="rotate(-7 0 -44)">' + shape("gw2", lid, "#ffffff", "#e8eef8", 44, 5, lidpat)
+    b += '<rect x="-13" y="-92" width="26" height="17" rx="6" fill="#fff" stroke="%s" stroke-width="4.5"/><path d="M-9,-83 L9,-83" stroke="%s" stroke-width="3"/></g>' % (INK, BLUE)
+    b += face("calm", 0, 2, 0.5)
+    b += foam(130, 82)
     return b
 
 
@@ -228,35 +255,50 @@ def piano():
     return b
 
 
-# ------------------------------------------------------------------ 29 水果箱
-def crate():
+# ------------------------------------------------------------------ 29 热气球（原水果箱）
+def balloon():
+    env = "M0,-156 Q80,-154 78,-90 Q74,-54 30,-30 L-30,-30 Q-74,-54 -78,-90 Q-80,-154 0,-156 Z"
+    gores = ('<path d="M0,-160 Q-56,-96 -14,-28 L14,-28 Q56,-96 0,-160 Z" fill="#fff3d6" clip-path="CLIP"/>'
+             '<path d="M0,-160 Q-104,-118 -58,-34 L-46,-34 Q-86,-112 0,-160 Z" fill="#f7c843" clip-path="CLIP"/>'
+             '<path d="M0,-160 Q104,-118 58,-34 L46,-34 Q86,-112 0,-160 Z" fill="#f7c843" clip-path="CLIP"/>')
+    b = shape("bl1", env, "#f0584f", "#d84a42", 56, 5.5, gores)
+    b += face("happy", 0, -78, 0.68)
+    b += '<path d="M-22,-16 L-42,10 M-8,-16 L-14,10 M8,-16 L14,10 M22,-16 L42,10" stroke="%s" stroke-width="3" stroke-linecap="round"/>' % INK
+    b += '<path d="M-30,-30 L30,-30 L22,-14 L-22,-14 Z" fill="#f7c843" stroke="%s" stroke-width="4" stroke-linejoin="round"/>' % INK
+    for x in (-52, 52):   # sandbags
+        b += '<path d="M%s,18 L%s,24 Q%s,40 %s,40 Q%s,40 %s,24 Z" fill="#e6d29e" stroke="%s" stroke-width="3" stroke-linejoin="round"/>' % (
+            x, x - 7, x - 10, x, x + 10, x + 7, INK)
+    weave = ('<path d="M-60,24 L60,24 M-60,36 L60,36 M-60,48 L60,48" stroke="#b37645" stroke-width="3" clip-path="CLIP"/>'
+             + "".join('<path d="M%s,14 L%s,62" stroke="#c48a52" stroke-width="2.5" clip-path="CLIP"/>' % (x, x) for x in range(-38, 44, 12)))
+    b += shape("bl2", "M-44,12 L44,12 L40,60 Q38,64 32,64 L-32,64 Q-38,64 -40,60 Z", "#d9a066", "#c48a52", 24, 5, weave)
+    b += '<rect x="-50" y="6" width="100" height="11" rx="5" fill="#b37645" stroke="%s" stroke-width="4"/>' % INK
+    b += ('<g transform="translate(26,-2) rotate(12)"><rect x="-9" y="-12" width="18" height="22" rx="1.5" fill="#fff" stroke="%s" stroke-width="2.5"/>'
+          '<path d="M-5,-5 L5,-5 M-5,0 L3,0" stroke="%s" stroke-width="2" stroke-linecap="round"/></g>') % (INK, INK)
+    b += foam(110, 80)
+    return b
+
+
+# ------------------------------------------------------------------ 26 泡泡浴缸（原帆布鞋）
+def bathtub():
     b = ""
-    b += stick("M58,-28 Q94,-30 92,-64 Q90,-80 76,-76", "#ffb35c", 7, 14)                 # tail
-    # the cat
-    b += shape("ct1", "M-62,-74 L-56,-108 L-34,-86 Z", "#ffb35c", None, None, 4.5)
-    b += shape("ct2", "M2,-74 L-4,-108 L-26,-86 Z", "#ffb35c", None, None, 4.5)
-    b += '<path d="M-54,-96 L-44,-86 M-6,-96 L-16,-86" stroke="#ff9fb0" stroke-width="5" stroke-linecap="round"/>'
-    head = "M-70,-52 Q-72,-92 -30,-92 Q12,-92 10,-52 Q8,-22 -30,-22 Q-68,-22 -70,-52 Z"
-    b += shape("ct3", head, "#ffb35c", "#f39a3c", -6, 5,
-               '<path d="M-38,-92 L-38,-80 M-30,-92 L-30,-78 M-22,-92 L-22,-80" stroke="#e8823a" stroke-width="4" stroke-linecap="round" clip-path="CLIP"/>')
-    b += face("small", -30, -34, 0.55)
-    b += '<path d="M-30,-44 l-4,-3 h8 Z" fill="#ff8a98" stroke="%s" stroke-width="1.5"/>' % INK
-    b += '<path d="M-56,-46 l-14,-3 M-56,-40 l-14,3 M-4,-46 l14,-3 M-4,-40 l14,3" stroke="%s" stroke-width="2" stroke-linecap="round"/>' % INK
-    # an apple beside it
-    b += '<circle cx="40" cy="-36" r="15" fill="#f0584f" stroke="%s" stroke-width="4"/><path d="M40,-50 l2,-8" stroke="%s" stroke-width="3.5" stroke-linecap="round"/>' % (INK, INK)
-    b += '<path d="M43,-56 q10,-6 14,2 q-8,4 -14,-2 Z" fill="#7cc35a" stroke="%s" stroke-width="2.5"/><circle cx="34" cy="-41" r="3" fill="#fff" opacity=".8"/>' % INK
-    # the crate: boards, corner posts, the "handle with care" stamp
-    box = "M-104,-28 L104,-28 L104,70 L-104,70 Z"
-    boards = ('<path d="M-110,4 L110,4 M-110,36 L110,36" stroke="#a86c3c" stroke-width="5" clip-path="CLIP"/>'
-              '<path d="M-110,10 L110,10 M-110,42 L110,42" stroke="#f0c98a" stroke-width="2.5" opacity=".8" clip-path="CLIP"/>')
-    b += shape("ct4", box, "#e3b06b", "#d29a55", 70, 5.5, boards)
-    b += '<rect x="-104" y="-28" width="16" height="98" fill="#cf9752" stroke="%s" stroke-width="4"/><rect x="88" y="-28" width="16" height="98" fill="#c08646" stroke="%s" stroke-width="4"/>' % (INK, INK)
-    b += "".join('<circle cx="%s" cy="%s" r="2.2" fill="%s"/>' % (x, y, INK) for x in (-96, 96) for y in (-16, 18))
-    # paws over the edge
-    b += '<ellipse cx="-50" cy="-28" rx="11" ry="7" fill="#ffb35c" stroke="%s" stroke-width="4"/><ellipse cx="-10" cy="-28" rx="11" ry="7" fill="#ffb35c" stroke="%s" stroke-width="4"/>' % (INK, INK)
-    b += ('<g transform="translate(36,20) rotate(-6)"><rect x="-26" y="-16" width="52" height="32" rx="3" fill="none" stroke="#d8453c" stroke-width="3.5"/>'
-          '<path d="M-7,-10 L7,-10 Q7,0 0,2 Q-7,0 -7,-10 Z M0,2 L0,9 M-5,10 L5,10" fill="none" stroke="#d8453c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></g>')
-    b += foam(130, 80)
+    for x in (-74, 74):   # lion feet
+        b += '<path d="M%s,30 Q%s,50 %s,52 Q%s,54 %s,46 Q%s,38 %s,30 Z" fill="#f7c843" stroke="%s" stroke-width="4" stroke-linejoin="round"/>' % (
+            x - 12, x - 16, x - 4, x + 4, x + 8, x + 8, x + 6, INK)
+    for x, y, r in ((-84, -52, 14), (-60, -60, 18), (-36, -54, 14), (-12, -66, 20), (14, -58, 15), (38, -64, 17), (62, -54, 13),
+                    (-26, -84, 10), (22, -86, 9), (-50, -80, 7)):
+        b += '<circle cx="%s" cy="%s" r="%s" fill="#fff" stroke="#a9dcff" stroke-width="3"/><circle cx="%s" cy="%s" r="%s" fill="#e4f4ff"/>' % (
+            x, y, r, x - r * 0.35, y - r * 0.35, r * 0.25)
+    b += stick("M-108,-40 L-108,-70 Q-108,-80 -96,-80 L-84,-80", "#f7c843", 6, 12)
+    b += '<path d="M-116,-80 L-100,-80 M-108,-88 L-108,-72" stroke="%s" stroke-width="5" stroke-linecap="round"/>' % INK
+    b += '<path d="M-84,-74 q5,8 0,12 q-5,-4 0,-12 Z" fill="#8fd0ff" stroke="%s" stroke-width="2.5"/>' % INK
+    tub = "M-118,-34 L118,-34 Q116,24 76,36 L-76,36 Q-116,24 -118,-34 Z"
+    b += shape("bt1", tub, "#ffffff", "#dde6f3", 72, 5.5)
+    b += '<rect x="-126" y="-46" width="252" height="15" rx="7.5" fill="#fff" stroke="%s" stroke-width="5"/>' % INK
+    chain = [(104, -40), (110, -26), (117, -13), (123, 0), (128, 13), (132, 25)]
+    b += "".join('<circle cx="%s" cy="%s" r="3.4" fill="none" stroke="%s" stroke-width="2.5"/>' % (x, y, INK) for x, y in chain)
+    b += '<ellipse cx="134" cy="36" rx="10" ry="6" fill="%s"/>' % INK
+    b += face("happy", 0, 10, 0.6)
+    b += foam(126, 80)
     return b
 
 
@@ -317,10 +359,13 @@ def planks():
     return b
 
 
-SHIPS = [("wupeng", wupeng), ("duck", duck), ("musicbox", musicbox), ("teacup", teacup), ("sneaker", sneaker),
-         ("peapod", peapod), ("piano", piano), ("crate", crate), ("seaplane", seaplane), ("planks", planks)]
+SHIPS = [("wupeng", wupeng), ("duck", duck), ("fishbowl", fishbowl), ("teacup", teacup), ("bathtub", bathtub),
+         ("peapod", peapod), ("piano", piano), ("balloon", balloon), ("seaplane", seaplane), ("planks", planks)]
+SPARES = [("gaiwan", gaiwan)]
 
 if __name__ == "__main__":
     out = [{"key": k, "svg": svg(f())} for k, f in SHIPS]
     json.dump(out, open(os.path.join(HERE, "new-ships-svg.json"), "w", encoding="utf-8"), ensure_ascii=False)
-    print(len(out), "ships")
+    spares = [{"key": k, "svg": svg(f())} for k, f in SPARES]
+    json.dump(spares, open(os.path.join(HERE, "spare-ships-svg.json"), "w", encoding="utf-8"), ensure_ascii=False)
+    print(len(out), "ships,", len(spares), "spares")
