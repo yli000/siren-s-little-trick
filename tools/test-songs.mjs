@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 曲库校验（v2）：20 首歌能解析、音域落在海妖的音区、每句长度合适、双语齐全、常客船存在。
+ * 曲库校验（v2）：30 首歌能解析、音域落在海妖的音区、每句长度合适、双语齐全、常客船存在。
  * 并打印每首的难度特征，供人工核对难度分档。
  *
  * 用法：node tools/test-songs.mjs
@@ -14,7 +14,7 @@ let fails = 0;
 const check = (ok, msg) => { if (!ok) { fails += 1; console.log('  ✗ ' + msg); } };
 
 console.log('曲库校验');
-check(SONGS.length === 20, `应有 20 首，实际 ${SONGS.length}`);
+check(SONGS.length === 30, `应有 30 首，实际 ${SONGS.length}`);
 const ids = new Set();
 const SIREN_LO = 55;
 const SIREN_HI = 76;
@@ -63,4 +63,4 @@ check(Music.fitShift(twinkle, { lo: 30, hi: 40 }, 0) === -6, 'fitShift：移调�
 check(Music.fitShift(twinkle, null, 2.4) === 2, 'fitShift：没有音区时用偏好移调');
 
 if (fails) { console.log(`\n曲库校验失败：${fails} 项`); process.exit(1); }
-console.log('  ✓ 20 首歌全部通过');
+console.log('  ✓ 30 首歌全部通过');
