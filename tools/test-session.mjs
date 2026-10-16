@@ -424,5 +424,21 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
   check('清除进度：图鉴清空，语言保留', P.collectedCount() === 0 && P.lang() === 'en');
 }
 
+// ---------------------------------------------------------------- 每句单独的拍速（越唱越快的歌）
+{
+  const { S, clock, events } = await world();
+  S.Session._setMicStub(singer(S));
+  const song = S.SONGS.find((s) => s.id === 'mountainking');
+  const beats = [];
+  S.Session.on('phase', () => { const st = S.Session.getState(); if (st.phase === 'countin') beats[st.phraseIdx] = Math.round(st.beatMs); });
+  S.Session.startSong(song);
+  await clock.advance(150000);
+  const want = song.bpms.map((b) => Math.round(60000 / b));
+  check('越唱越快：每句的倒数按这一句的拍速（第一句最慢、最后一句最快）', JSON.stringify(beats) === JSON.stringify(want), `${beats.join(',')} / 应为 ${want.join(',')}`);
+  const tiers = events.filter((e) => e.type === 'note').map((e) => e.p.tier);
+  const good = tiers.filter((t) => t === 'perfect' || t === 'great').length;
+  check('越唱越快：跟着唱对，到最快的一句也判得上', !!events.find((e) => e.type === 'finish') && good === tiers.length, `${good}/${tiers.length}`);
+}
+
 console.log(`\n${pass} 项通过，${fails.length} 项失败`);
 if (fails.length) process.exit(1);

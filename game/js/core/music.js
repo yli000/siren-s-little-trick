@@ -129,9 +129,18 @@
   /** 每拍毫秒 */
   function beatMs(bpm) { return 60000 / bpm; }
 
+  /**
+   * 第 i 句的拍速。歌可以用 bpms 给每句单独定拍速（越唱越快的歌），没有就用整首的 bpm。
+   * 塞壬唱、倒数「嘀、嘀、叮」、判定都按这一句的拍速走。
+   */
+  function phraseBpm(song, i) {
+    return song.bpms && song.bpms[i] ? song.bpms[i] : song.bpm;
+  }
+
   Siren.Music = {
     parsePhrase: parsePhrase,
     phraseNotes: phraseNotes,
+    phraseBpm: phraseBpm,
     songRange: songRange,
     songFeatures: songFeatures,
     fitShift: fitShift,
