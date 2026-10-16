@@ -1,4 +1,4 @@
-/* 塞壬的小把戏 —— 船只图鉴（v2，21 艘）
+/* 塞壬的小把戏 —— 船只图鉴（v2，31 艘）
  * 图在 assets/pixel/atlas.png 里：big_ / b88_ / ship_ / s48_ / s32_ / s20_ / s12_ + key
  */
 (function (global) {
@@ -89,7 +89,48 @@
     { key: 'moon',
       name: { zh: '月亮船', en: 'Moon Boat' },
       desc: { zh: "不知道是从哪片夜空落下来的。船身弯弯的，躺上去刚好。它睡着的时候，海面会变得很安静。",
-        en: "Nobody knows which night sky it fell from. Its hull curves just right for lying down. When it sleeps, the sea goes very quiet." } }
+        en: "Nobody knows which night sky it fell from. Its hull curves just right for lying down. When it sleeps, the sea goes very quiet." } },
+    // ---- 第 22–31 艘（2026-10，文案草稿，和克克一起改）
+    { key: "wupeng",
+      name: { zh: "乌篷船", en: "Black-Awning Boat" },
+      desc: { zh: "从江南水乡摇过来的，篷是竹篾编的，刷了黑漆。下雨天，雨点打在篷上，像有人在轻轻打拍子。",
+        en: "From the southern water towns, under a black bamboo awning. When it rains, the drops on the roof sound like someone keeping time." } },
+    { key: "duck",
+      name: { zh: "橡皮鸭", en: "Rubber Duck" },
+      desc: { zh: "浴室里那只黄色橡皮鸭，长大了一点点。捏一下会叫一声，音还挺准，就是它不太喜欢被捏。",
+        en: "The yellow rubber duck from the bathtub, a little bigger now. It squeaks right on pitch when squeezed. It would rather not be squeezed." } },
+    { key: "musicbox",
+      name: { zh: "八音盒船", en: "Music Box" },
+      desc: { zh: "一只木头八音盒，盖子里的小人一直在转圈。它只会一首曲子，不过它觉得一首就够了。",
+        en: "A wooden music box with a tiny dancer turning inside the lid. It knows only one tune, and it thinks one is plenty." } },
+    { key: "teacup",
+      name: { zh: "茶杯船", en: "Teacup" },
+      desc: { zh: "一只缺了把手的白瓷茶杯，杯底还留着一圈茶渍。它漂得很稳，因为从来不着急。",
+        en: "A white china teacup with a broken handle and a ring of tea at the bottom. It floats very steadily, because it is never in a hurry." } },
+    { key: "sneaker",
+      name: { zh: "帆布鞋", en: "Lost Sneaker" },
+      desc: { zh: "有人在沙滩上丢的一只帆布鞋，鞋带还系着蝴蝶结。另一只大概也在海上的某个地方。",
+        en: "A canvas sneaker someone left on the beach, laces still tied in a bow. The other one is probably out at sea somewhere too." } },
+    { key: "peapod",
+      name: { zh: "豌豆荚", en: "Pea Pod" },
+      desc: { zh: "一枚豌豆荚，五颗豌豆排排坐。合唱的时候按个子站，最小的那颗唱最高的音。",
+        en: "Five peas in a pod, sitting in a row. When they sing together they line up by height, and the smallest one takes the highest note." } },
+    { key: "piano",
+      name: { zh: "三角钢琴", en: "Grand Piano" },
+      desc: { zh: "一架三角钢琴，琴盖支起来当帆。有一个键按下去不会响，它一直在等人来修。",
+        en: "A grand piano with its lid propped up for a sail. One key makes no sound. It has been waiting a long time for someone to fix it." } },
+    { key: "crate",
+      name: { zh: "水果箱", en: "Fruit Crate" },
+      desc: { zh: "运水果的木箱子，侧面印着「小心轻放」。箱子里坐着一只猫，没人知道它是船长还是乘客。",
+        en: "A wooden fruit crate stamped \"Handle with care\". A cat sits inside. Nobody knows if it is the captain or a passenger." } },
+    { key: "seaplane",
+      name: { zh: "水上飞机", en: "Seaplane" },
+      desc: { zh: "只会在水面上滑，一直没学会起飞。翅膀很宽，晒被子正合适。",
+        en: "It skims along the water but never learned to take off. Its wings are very wide, though. Perfect for drying blankets." } },
+    { key: "planks",
+      name: { zh: "木板筏", en: "Plank Raft" },
+      desc: { zh: "几块木板捆成的筏子，帆是打了补丁的床单。桅杆上缠着好几圈绳子，没人知道当初绑过什么。",
+        en: "A few planks lashed into a raft, with a patched bedsheet for a sail. Rope is wound around the mast. Nobody knows what it once held." } }
   ];
 
   /** 船只的显示色：揭晓时的名牌丝带、图鉴格子的边框（所有船一样，没有等级） */

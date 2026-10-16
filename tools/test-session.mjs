@@ -396,12 +396,13 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
     P.recordArrival(S.SONGS[i % S.SONGS.length].id, idx);
     seen.add(idx);
   }
-  check('唱满 21 首：21 艘船都见过，没有重复', seen.size === S.SHIPS.length, `${seen.size} 艘`);
+  const N = S.SHIPS.length;
+  check(`唱满 ${N} 首：${N} 艘船都见过，没有重复`, seen.size === N, `${seen.size} 艘`);
 
   const count = {};
   let repeats = 0;
   let prev = S.Progress.recent()[0];
-  for (let i = 0; i < 21000; i += 1) {
+  for (let i = 0; i < 1000 * N; i += 1) {
     const idx = P.pickShip('twinkle', rng);
     const key = S.SHIPS[idx].key;
     if (key === prev) repeats += 1;
@@ -410,7 +411,7 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
     count[key] = (count[key] || 0) + 1;
   }
   const vals = Object.values(count);
-  check('见齐之后：每艘船的机会一样（各约 1/21）', vals.length === 21 && Math.min(...vals) > 850 && Math.max(...vals) < 1150, `${Math.min(...vals)}–${Math.max(...vals)} 次`);
+  check(`见齐之后：每艘船的机会一样（各约 1/${N}）`, vals.length === N && Math.min(...vals) > 850 && Math.max(...vals) < 1150, `${Math.min(...vals)}–${Math.max(...vals)} 次`);
   check('见齐之后：同一艘不会连着来两次', repeats === 0);
   check('唱哪首歌不影响来哪艘船', P.pickShip('twinkle', () => 0.3) === P.pickShip('mary', () => 0.3));
 
