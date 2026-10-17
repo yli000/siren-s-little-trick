@@ -69,23 +69,21 @@ def svg(body):
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-160 -160 320 260">%s</svg>' % body
 
 
-# ------------------------------------------------------------------ 22 乌篷船
+# ------------------------------------------------------------------ 22 乌篷船：一个大篷（菱形编织纹），船身上沿平直，两头几乎不翘
 def wupeng():
     b = ""
     for x, y in ((-96, -104), (-40, -128), (20, -112), (78, -132), (120, -96)):        # rain
         b += '<path d="M%s,%s q7,12 0,18 q-7,-6 0,-18 Z" fill="#8fd0ff" stroke="%s" stroke-width="3" stroke-linejoin="round"/>' % (x, y, INK)
-    b += stick("M104,-34 L150,62", "#c98a52", 4.5, 11)                                    # 橹
-    awning = "M-64,14 L-64,-26 Q-62,-66 -2,-68 Q58,-66 60,-26 L60,14 Z"
-    weave = "".join('<path d="M%s,-80 l46,100 M%s,-80 l-46,100" stroke="#575d7c" stroke-width="3" clip-path="CLIP"/>' % (x, x) for x in range(-90, 100, 18))
-    b += shape("wp1", awning, "#3e4359", "#353a4f", 30, 5, weave)
-    b += shape("wp2", "M64,14 L64,-14 Q66,-36 94,-36 L96,14 Z", "#3e4359", "#353a4f", 84, 4.5,
-               '<path d="M62,-30 l40,50 M80,-40 l-30,60" stroke="#575d7c" stroke-width="3" clip-path="CLIP"/>')
-    hull = "M-138,-14 Q-120,10 -60,14 L60,14 Q120,10 138,-14 Q126,38 76,58 L-76,58 Q-126,38 -138,-14 Z"
-    b += shape("wp3", hull, "#b7814f", "#9a6a3e", 70, 5.5,
-               '<path d="M-126,16 Q0,44 126,16" fill="none" stroke="#8a5a32" stroke-width="3.5" clip-path="CLIP"/>')
-    b += '<path d="M-134,-10 Q-120,8 -60,12 L60,12 Q120,8 134,-10" fill="none" stroke="#7a4a28" stroke-width="3" opacity=".6"/>'
-    b += face("happy", -6, 46, 0.55)
-    b += foam(138, 80)
+    b += stick("M106,-30 L150,62", "#c98a52", 4.5, 11)                                    # 橹
+    awning = "M-68,14 L-68,-26 Q-66,-66 -4,-68 Q58,-66 60,-26 L60,14 Z"
+    weave = "".join('<path d="M%s,-80 l46,100 M%s,-80 l-46,100" stroke="#575d7c" stroke-width="3" clip-path="CLIP"/>' % (x, x) for x in range(-94, 100, 18))
+    b += shape("wp1", awning, "#3e4359", "#353a4f", 28, 5, weave)
+    hull = "M-144,9 Q-140,14 -122,14 L122,14 Q140,14 146,7 Q138,38 94,56 L-94,56 Q-138,38 -144,9 Z"
+    b += shape("wp3", hull, "#b7814f", "#9a6a3e", 76, 5.5,
+               '<path d="M-150,27 L150,27 M-150,41 L150,41" stroke="#9a6a3e" stroke-width="3" clip-path="CLIP"/>')
+    b += '<path d="M-140,10 Q-136,12 -120,12 L120,12 Q136,12 142,8" fill="none" stroke="#7a4a28" stroke-width="3" opacity=".6"/>'
+    b += face("happy", -4, 48, 0.55)
+    b += foam(146, 80)
     return b
 
 
@@ -98,21 +96,21 @@ def rose(x, y, s=1.0):
             '<circle r="6.5" fill="#f6a3bd"/><path d="M-2.5,1 a3,3 0 1,1 4,1.5" fill="none" stroke="#d9668e" stroke-width="2" stroke-linecap="round"/></g>') % (x, y, s)
 
 
-# ------------------------------------------------------------------ 23 橡皮鸭
+# ------------------------------------------------------------------ 23 橡皮鸭：经典玩具鸭的比例——大圆脑袋、胖身子、小翘尾巴、扁嘴微笑、一只亮晶晶的眼睛
 def duck():
-    b = note(124, -106, 0.9, -8)
-    body = "M-112,-8 Q-126,-46 -102,-50 Q-88,-24 -66,-20 Q-10,-30 40,-18 Q106,-8 106,30 Q102,70 0,72 Q-98,70 -110,36 Q-114,16 -112,-8 Z"
-    b += shape("dk1", body, "#ffd84a", "#f5b915", 64)
-    b += shape("dk2", "M-64,14 Q-74,-26 -42,-42 Q-26,-22 -38,8 Q-50,20 -64,14 Z", "#ffc928", "#f5b915", -46, 4)   # waving wing
-    b += shape("dk3", "M-6,-62 A50,50 0 1,1 94,-62 A50,50 0 1,1 -6,-62 Z", "#ffd84a", "#f5b915", 80)                # big round head
-    b += '<path d="M38,-110 Q26,-130 44,-136 Q40,-122 54,-118 Q48,-108 38,-110 Z" fill="#ffd84a" stroke="%s" stroke-width="4" stroke-linejoin="round"/>' % INK
-    for ex in (24, 64):
-        b += ('<ellipse cx="%s" cy="-68" rx="8.5" ry="11.5" fill="%s"/><circle cx="%s" cy="-73" r="3.6" fill="#fff"/>'
-              '<circle cx="%s" cy="-62" r="1.8" fill="#fff"/>') % (ex, INK, ex + 2.5, ex - 3)
-    b += shape("dk4", "M24,-50 Q44,-60 64,-50 Q66,-36 44,-33 Q22,-36 24,-50 Z", "#ff9a3c", "#f07f22", 54, 4)
-    b += '<path d="M31,-46 Q44,-40 57,-46" fill="none" stroke="#d9661a" stroke-width="3" stroke-linecap="round"/>'
-    b += '<ellipse cx="8" cy="-48" rx="9" ry="5.5" fill="#ff9fb0" opacity=".9"/><ellipse cx="80" cy="-48" rx="9" ry="5.5" fill="#ff9fb0" opacity=".9"/>'
-    b += foam(130, 80)
+    b = note(128, -104, 0.85, -8)
+    body = "M-104,-6 Q-120,-34 -108,-52 Q-98,-62 -88,-46 Q-80,-32 -66,-31 Q-40,-38 0,-30 Q96,-28 104,22 Q102,68 0,70 Q-98,68 -108,30 Q-110,12 -104,-6 Z"
+    b += shape("dk1", body, "#ffd93b", "#f3b712", 60)
+    b += '<path d="M-58,10 Q-28,-8 10,8 Q-16,32 -58,10 Z" fill="#ffcb1f" stroke="#e5a50a" stroke-width="3.5" stroke-linejoin="round"/>'
+    b += shape("dk3", "M-20,-60 A54,54 0 1,1 88,-60 A54,54 0 1,1 -20,-60 Z", "#ffd93b", "#f3b712", 70)
+    b += shape("dk4", "M78,-60 Q100,-68 117,-60 Q127,-53 121,-45 Q112,-36 96,-36 Q82,-36 78,-44 Z", "#ff8a1f", "#f0700f", 108, 4.5)
+    b += '<path d="M86,-48 Q102,-40 120,-52" fill="none" stroke="#c9560a" stroke-width="3" stroke-linecap="round"/>'
+    b += ('<ellipse cx="54" cy="-68" rx="10.5" ry="14" fill="%s"/><circle cx="58" cy="-75" r="4.8" fill="#fff"/>'
+          '<circle cx="50" cy="-61" r="2.2" fill="#fff"/>') % INK
+    b += '<ellipse cx="42" cy="-44" rx="12" ry="7" fill="#ff9fb0" opacity=".9"/>'
+    b += '<path d="M-2,-88 Q8,-106 28,-110" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" opacity=".85"/><circle cx="-9" cy="-74" r="4" fill="#fff" opacity=".85"/>'
+    b += '<path d="M-84,-18 Q-62,-28 -36,-27" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity=".7"/>'
+    b += foam(128, 80)
     return b
 
 
