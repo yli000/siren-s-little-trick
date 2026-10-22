@@ -90,7 +90,7 @@
       name: { zh: '月亮船', en: 'Moon Boat' },
       desc: { zh: "不知道是从哪片夜空落下来的。船身弯弯的，躺上去刚好。它睡着的时候，海面会变得很安静。",
         en: "Nobody knows which night sky it fell from. Its hull curves just right for lying down. When it sleeps, the sea goes very quiet." } },
-    // ---- 第 22–31 艘（2026-10，文案草稿，和克克一起改）
+    // ---- 第 22–31 艘（2026-10，图和文案和克克一起定的）
     { key: "wupeng",
       name: { zh: "乌篷船", en: "Black-Awning Boat" },
       desc: { zh: "从江南水乡摇过来的，篷是竹篾编的，刷了黑漆。下雨天，雨点打在篷上，像有人在轻轻打拍子。",
