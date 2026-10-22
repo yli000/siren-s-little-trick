@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 import { deflateRawSync } from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -74,7 +75,8 @@ const SINGLE_IMAGE_LIMIT = 500 * 1024;    // 单图 < 500KB
  * 随包上传会让容器看到多个 html，也浪费体积。
  * 但它们在源码里保留，仍受 tools/selfcheck.mjs 的全量检查。
  */
-const DEFAULT_EXCLUDE = ['js/probe', 'js/lab'];
+// web/：网页版专用（添加到手机桌面的 manifest、图标、pwa.js），小红书包里不要；index.html 里对应的 web-only 段见 stripWebOnly()
+const DEFAULT_EXCLUDE = ['js/probe', 'js/lab', 'web'];
 const EXCLUDES = String(getArg('exclude', DEFAULT_EXCLUDE.join(',')))
   .split(',')
   .map((s) => s.trim().replace(/^[./\\]+/, ''))
@@ -416,6 +418,24 @@ function validateReferences(files) {
   }
 }
 
+/**
+ * index.html 里 <!-- web-only --> … <!-- /web-only --> 这一段只给网页版（添加到手机桌面），
+ * 小红书容器不认 manifest，web/ 目录也不进包，所以打包前去掉；写到临时文件，源文件不动。
+ */
+function stripWebOnly(files) {
+  const entry = files.find((f) => f.rel === 'index.html');
+  if (!entry) return;
+  const text = fs.readFileSync(entry.abs, 'utf8');
+  const out = text.replace(/[ \t]*<!-- web-only[\s\S]*?<!-- \/web-only -->[ \t]*\r?\n?/g, '');
+  if (out === text) return;
+  if (/web-only/.test(out)) fail('index.html', 'web-only 段没有成对的 <!-- /web-only --> 结尾');
+  const tmp = path.join(os.tmpdir(), `siren-pack-index-${process.pid}.html`);
+  fs.writeFileSync(tmp, out);
+  entry.abs = tmp;
+  entry.size = Buffer.byteLength(out);
+  notes.push('index.html 已去掉 web-only 段（网页版添加到桌面用的 manifest / 图标 / pwa.js）');
+}
+
 /** 检查 index.html 的必需项 */
 function validateEntry(files) {
   const entry = files.find((f) => f.rel === 'index.html');
@@ -553,6 +573,9 @@ function main() {
     console.error('排除后源目录为空，请检查 --exclude 参数');
     process.exit(1);
   }
+
+  // index.html 去掉 web-only 段（网页版的 manifest、桌面图标、pwa.js），之后的校验和打包都用去掉后的版本
+  stripWebOnly(files);
 
   // 1) 结构 / 体积 / 文件类型
   validateStructure(files);

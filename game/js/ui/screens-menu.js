@@ -312,7 +312,8 @@
   // ================================================================ 设置
 
   // open：展开的是哪一项（更新日志 / 关于，一次只开一项）；drop：语言下拉框；pop：麦克风弹窗
-  var set = { open: null, drop: false, pop: null };
+  var set = { open: null, drop: false, pop: null, logVer: 0, logDrop: false };
+  var logPick = null;   // 版本下拉框的位置：画更新日志那一行时记下来，最后盖在最上面画
 
   function micGranted() { return Siren.Session.micState() === 'granted'; }
 
@@ -327,20 +328,26 @@
     App().askMic(function (ok) { if (!ok && App().name === 'settings') set.pop = 'blocked'; });
   }
 
+  /** 小红书容器里（有 window.xhs）不显示只属于网页版的条目 */
+  function inMiniTool() { return !!global.xhs; }
+
+  /**
+   * 更新日志一次显示一版，用版本下拉框切换：设置小窗不能滚动，360×640 的屏幕上只放得下一版。
+   * 默认是最新一版。
+   */
   function logBody(w) {
     var log = Siren.CHANGELOG;
-    var out = [];
-    // 只显示最新一版：设置小窗不能滚动，360×640 的屏幕上放一版刚好，多一版就把「关于」挤出屏幕
-    for (var v = 0; v < Math.min(1, log.length); v += 1) {
-      var items = UI.lang() === 'en' ? log[v].en : log[v].zh;
-      out.push({ head: 'v' + log[v].version, date: UI.L(log[v].date), old: false, items: items.map(function (s2) { return Gfx.wrap(s2, w - 30); }) });
-    }
-    return out;
+    var v = log[Math.min(set.logVer, log.length - 1)];
+    var items = (UI.lang() === 'en' ? v.en : v.zh).filter(function (it) { return typeof it === 'string' || !it.web || !inMiniTool(); });
+    return {
+      head: 'v' + v.version, date: UI.L(v.date),
+      items: items.map(function (it) { return Gfx.wrap(typeof it === 'string' ? it : it.text, w - 30); })
+    };
   }
-  function logHeight(body) {
-    var h = 0;
-    body.forEach(function (b) { h += b.old ? 16 : 18; b.items.forEach(function (it) { h += it.length * 14 + 2; }); h += b.old ? 0 : 6; });
-    return h;
+  function logHeight(b) {
+    var h = 22;
+    b.items.forEach(function (it) { h += it.length * 14 + 2; });
+    return h + 6;
   }
 
   /**
@@ -379,18 +386,21 @@
     row('mic', t_('mic'), micGranted() ? t_('micOk') : t_('micNo'), micGranted() ? null : micTap);
 
     var lb = logBody(w);
-    row('log', t_('changelog'), { caret: set.open === 'log' }, function () { set.open = set.open === 'log' ? null : 'log'; },
+    row('log', t_('changelog'), { caret: set.open === 'log' }, function () { set.open = set.open === 'log' ? null : 'log'; set.logDrop = false; },
       set.open === 'log' ? { h: logHeight(lb) + 4, draw: function (cx, cy) {
-        lb.forEach(function (b) {
-          Gfx.text(g, b.head, cx + 10, cy, { c: b.old ? C.DIM : C.CREAM });
-          Gfx.text(g, b.date, cx + w - 10, cy, { c: C.DIM, a: 'r' });
-          cy += b.old ? 16 : 18;
-          b.items.forEach(function (it) {
-            g.fillStyle = C.CORAL; g.fillRect(cx + 12, cy + 6, 3, 3);
-            for (var ln = 0; ln < it.length; ln += 1) Gfx.text(g, it[ln], cx + 20, cy + ln * 14, { c: '#d6dcff' });
-            cy += it.length * 14 + 2;
-          });
-          cy += b.old ? 0 : 6;
+        // 版本下拉框：点开选一版，下面就换成那一版的内容
+        var bw = Gfx.tw(lb.head) + 24;
+        Gfx.panel(g, cx + 8, cy - 4, bw, 19, 4, set.logDrop ? C.NAVY_LL : C.NAVY, C.NAVY_LL, null);
+        Gfx.text(g, lb.head, cx + 14, cy, { c: C.CREAM });
+        UI.caret(cx + 8 + bw - 10, cy + 5, set.logDrop);
+        UI.hit('logver', cx + 8, cy - 4, bw, 19, function () { set.logDrop = !set.logDrop; });
+        Gfx.text(g, lb.date, cx + w - 10, cy, { c: C.DIM, a: 'r' });
+        logPick = { x: cx + 8, y: cy + 17 };
+        cy += 22;
+        lb.items.forEach(function (it) {
+          g.fillStyle = C.CORAL; g.fillRect(cx + 12, cy + 6, 3, 3);
+          for (var ln = 0; ln < it.length; ln += 1) Gfx.text(g, it[ln], cx + 20, cy + ln * 14, { c: '#d6dcff' });
+          cy += it.length * 14 + 2;
         });
       } } : null);
     row('about', t_('about'), { caret: set.open === 'about' }, function () { set.open = set.open === 'about' ? null : 'about'; },
@@ -432,6 +442,29 @@
     return h;
   }
 
+  /** 更新日志的版本下拉框：贴在版本号下面，新的在上面；版本多到放不下时只列放得下的那些 */
+  function logDrop(w) {
+    if (!logPick) return;
+    var g = Gfx.ctx();
+    UI.block(function () { set.logDrop = false; });
+    var log = Siren.CHANGELOG;
+    var n = Math.max(1, Math.min(log.length, Math.floor((Gfx.H() - logPick.y - 12) / 22)));
+    var dw = w - 16;
+    var dx = logPick.x;
+    var dy = logPick.y;
+    Gfx.panel(g, dx, dy, dw, n * 22 + 6, 6, C.NAVY, C.NAVY_LL, C.INK);
+    for (var i = 0; i < n; i += 1) {
+      (function (k, oy) {
+        var on = k === set.logVer;
+        if (on) { g.fillStyle = C.NAVY_L; g.fillRect(dx + 3, oy, dw - 6, 20); }
+        Gfx.text(g, 'v' + log[k].version, dx + 10, oy + 4, { c: on ? C.CREAM : '#b9c4ff' });
+        Gfx.text(g, UI.L(log[k].date), dx + dw - 10, oy + 4, { c: C.DIM, a: 'r' });
+        UI.hit('logv_' + k, dx + 3, oy, dw - 6, 20, function () { set.logVer = k; set.logDrop = false; });
+      })(i, dy + 3 + i * 22);
+    }
+    UI.setBack(function () { set.logDrop = false; });
+  }
+
   /** 语言下拉框：贴在语言那一行下面，右对齐 */
   function langDrop(x, w, langY) {
     var g = Gfx.ctx();
@@ -463,7 +496,7 @@
 
   Screens.settings = {
     enter: function () {
-      set.open = null; set.drop = false; set.pop = null;
+      set.open = null; set.drop = false; set.pop = null; set.logVer = 0; set.logDrop = false;
       Siren.Session.refreshMic();
     },
     draw: function (t) {
@@ -486,6 +519,7 @@
       UI.setBack(back);
       var r = settingsRows(x, py + 36, w);
       if (set.drop) langDrop(x, w, r.langY);
+      if (set.open === 'log' && set.logDrop) logDrop(w);
       if (set.pop) micPopup();
     },
     back: function () { App().go('title'); },

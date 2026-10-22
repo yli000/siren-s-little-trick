@@ -140,6 +140,16 @@ async def run(args):
         H = await page.evaluate("Siren.Gfx.H()")
         wide = await page.evaluate("Siren.SONGS.flatMap((s) => [s.title.zh, s.title.en]).filter((t) => Siren.Gfx.tw(t) > 112)")
         R.check("选歌卡：所有歌名（中英）都放得下，不被省略号截断", not wide, ", ".join(wide))
+        man = await page.evaluate("""async () => {
+          const l = document.querySelector('link[rel=manifest]');
+          if (!l) return null;
+          const m = await (await fetch(l.href)).json();
+          const load = (src, size) => new Promise((r) => { const im = new Image(); im.onload = () => r(!size || im.naturalWidth + 'x' + im.naturalHeight === size); im.onerror = () => r(false); im.src = src; });
+          const icons = await Promise.all(m.icons.map((i) => load(new URL(i.src, l.href).href, i.sizes)));
+          const touch = await load(document.querySelector('link[rel=apple-touch-icon]').href, '180x180');
+          return { start: new URL(m.start_url, l.href).pathname, display: m.display, icons, touch };
+        }""")
+        R.check("网页版能添加到手机桌面：manifest、各尺寸图标、iPhone 图标都在", bool(man) and man["start"] == "/" and man["display"] == "standalone" and all(man["icons"]) and man["touch"], man)
         await page.mouse.click(5, 5)
         await page.keyboard.press("Enter")   # 首页第一个选项就是「开始」
         R.check("首页 → 选歌", await wait_for(page, "__siren.name === 'select'", 2000))
@@ -258,6 +268,13 @@ async def run(args):
         await tap(page, 90, rows + 36 * 3 + 15)   # 更新日志：展开
         await page.wait_for_timeout(150)
         await shot(page, "09-settings-log")
+        await page.evaluate("Siren.Screens.settings._ui.logDrop = true")
+        await page.wait_for_timeout(150)
+        await shot(page, "09-settings-log-versions")
+        await page.evaluate("Siren.Screens.settings._ui.logVer = Siren.CHANGELOG.length - 1; Siren.Screens.settings._ui.logDrop = false")
+        await page.wait_for_timeout(150)
+        await shot(page, "09-settings-log-old")
+        R.check("更新日志：能切到最早的一版", await page.evaluate("Siren.Screens.settings._ui.logVer") == await page.evaluate("Siren.CHANGELOG.length - 1"))
         R.check("全程没有脚本错误", not errors, errors[:3])
         await ctx.close()
 
