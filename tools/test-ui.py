@@ -138,6 +138,8 @@ async def run(args):
         await page.evaluate(HOOK)
         await shot(page, "01-title")
         H = await page.evaluate("Siren.Gfx.H()")
+        wide = await page.evaluate("Siren.SONGS.flatMap((s) => [s.title.zh, s.title.en]).filter((t) => Siren.Gfx.tw(t) > 112)")
+        R.check("选歌卡：所有歌名（中英）都放得下，不被省略号截断", not wide, ", ".join(wide))
         await page.mouse.click(5, 5)
         await page.keyboard.press("Enter")   # 首页第一个选项就是「开始」
         R.check("首页 → 选歌", await wait_for(page, "__siren.name === 'select'", 2000))

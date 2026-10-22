@@ -330,15 +330,16 @@
   function logBody(w) {
     var log = Siren.CHANGELOG;
     var out = [];
-    for (var v = 0; v < log.length; v += 1) {
+    // 只显示最新一版：设置小窗不能滚动，360×640 的屏幕上放一版刚好，多一版就把「关于」挤出屏幕
+    for (var v = 0; v < Math.min(1, log.length); v += 1) {
       var items = UI.lang() === 'en' ? log[v].en : log[v].zh;
-      out.push({ head: 'v' + log[v].version, date: UI.L(log[v].date), items: items.map(function (s2) { return Gfx.wrap(s2, w - 30); }) });
+      out.push({ head: 'v' + log[v].version, date: UI.L(log[v].date), old: false, items: items.map(function (s2) { return Gfx.wrap(s2, w - 30); }) });
     }
     return out;
   }
   function logHeight(body) {
     var h = 0;
-    body.forEach(function (b) { h += 18; b.items.forEach(function (it) { h += it.length * 14 + 2; }); h += 6; });
+    body.forEach(function (b) { h += b.old ? 16 : 18; b.items.forEach(function (it) { h += it.length * 14 + 2; }); h += b.old ? 0 : 6; });
     return h;
   }
 
@@ -381,15 +382,15 @@
     row('log', t_('changelog'), { caret: set.open === 'log' }, function () { set.open = set.open === 'log' ? null : 'log'; },
       set.open === 'log' ? { h: logHeight(lb) + 4, draw: function (cx, cy) {
         lb.forEach(function (b) {
-          Gfx.text(g, b.head, cx + 10, cy, { c: C.CREAM });
+          Gfx.text(g, b.head, cx + 10, cy, { c: b.old ? C.DIM : C.CREAM });
           Gfx.text(g, b.date, cx + w - 10, cy, { c: C.DIM, a: 'r' });
-          cy += 18;
+          cy += b.old ? 16 : 18;
           b.items.forEach(function (it) {
             g.fillStyle = C.CORAL; g.fillRect(cx + 12, cy + 6, 3, 3);
             for (var ln = 0; ln < it.length; ln += 1) Gfx.text(g, it[ln], cx + 20, cy + ln * 14, { c: '#d6dcff' });
             cy += it.length * 14 + 2;
           });
-          cy += 6;
+          cy += b.old ? 0 : 6;
         });
       } } : null);
     row('about', t_('about'), { caret: set.open === 'about' }, function () { set.open = set.open === 'about' ? null : 'about'; },

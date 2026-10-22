@@ -22,7 +22,7 @@
     return;
   }
 
-  Siren.version = '2.0.0';
+  Siren.version = '2.1.0';
 
   // 只读的能力自检（供前端判断环境）
   Siren.capabilities = {

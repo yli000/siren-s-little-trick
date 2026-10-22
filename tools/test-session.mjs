@@ -396,12 +396,13 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
     P.recordArrival(S.SONGS[i % S.SONGS.length].id, idx);
     seen.add(idx);
   }
-  check('唱满 21 首：21 艘船都见过，没有重复', seen.size === S.SHIPS.length, `${seen.size} 艘`);
+  const N = S.SHIPS.length;
+  check(`唱满 ${N} 首：${N} 艘船都见过，没有重复`, seen.size === N, `${seen.size} 艘`);
 
   const count = {};
   let repeats = 0;
   let prev = S.Progress.recent()[0];
-  for (let i = 0; i < 21000; i += 1) {
+  for (let i = 0; i < 1000 * N; i += 1) {
     const idx = P.pickShip('twinkle', rng);
     const key = S.SHIPS[idx].key;
     if (key === prev) repeats += 1;
@@ -410,7 +411,7 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
     count[key] = (count[key] || 0) + 1;
   }
   const vals = Object.values(count);
-  check('见齐之后：每艘船的机会一样（各约 1/21）', vals.length === 21 && Math.min(...vals) > 850 && Math.max(...vals) < 1150, `${Math.min(...vals)}–${Math.max(...vals)} 次`);
+  check(`见齐之后：每艘船的机会一样（各约 1/${N}）`, vals.length === N && Math.min(...vals) > 850 && Math.max(...vals) < 1150, `${Math.min(...vals)}–${Math.max(...vals)} 次`);
   check('见齐之后：同一艘不会连着来两次', repeats === 0);
   check('唱哪首歌不影响来哪艘船', P.pickShip('twinkle', () => 0.3) === P.pickShip('mary', () => 0.3));
 
@@ -422,6 +423,22 @@ async function walkGuide(S, clock, gates, choice = () => 'start', maxMs = 60000)
   P.setLang('en');
   P.reset();
   check('清除进度：图鉴清空，语言保留', P.collectedCount() === 0 && P.lang() === 'en');
+}
+
+// ---------------------------------------------------------------- 每句单独的拍速（越唱越快的歌）
+{
+  const { S, clock, events } = await world();
+  S.Session._setMicStub(singer(S));
+  const song = S.SONGS.find((s) => s.id === 'mountainking');
+  const beats = [];
+  S.Session.on('phase', () => { const st = S.Session.getState(); if (st.phase === 'countin') beats[st.phraseIdx] = Math.round(st.beatMs); });
+  S.Session.startSong(song);
+  await clock.advance(150000);
+  const want = song.bpms.map((b) => Math.round(60000 / b));
+  check('越唱越快：每句的倒数按这一句的拍速（第一句最慢、最后一句最快）', JSON.stringify(beats) === JSON.stringify(want), `${beats.join(',')} / 应为 ${want.join(',')}`);
+  const tiers = events.filter((e) => e.type === 'note').map((e) => e.p.tier);
+  const good = tiers.filter((t) => t === 'perfect' || t === 'great').length;
+  check('越唱越快：跟着唱对，到最快的一句也判得上', !!events.find((e) => e.type === 'finish') && good === tiers.length, `${good}/${tiers.length}`);
 }
 
 console.log(`\n${pass} 项通过，${fails.length} 项失败`);

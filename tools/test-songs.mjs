@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 曲库校验（v2）：20 首歌能解析、音域落在海妖的音区、每句长度合适、双语齐全、常客船存在。
+ * 曲库校验（v2）：31 首歌能解析、音域落在海妖的音区、每句长度合适、双语齐全、常客船存在。
  * 并打印每首的难度特征，供人工核对难度分档。
  *
  * 用法：node tools/test-songs.mjs
@@ -14,7 +14,7 @@ let fails = 0;
 const check = (ok, msg) => { if (!ok) { fails += 1; console.log('  ✗ ' + msg); } };
 
 console.log('曲库校验');
-check(SONGS.length === 20, `应有 20 首，实际 ${SONGS.length}`);
+check(SONGS.length === 31, `应有 31 首，实际 ${SONGS.length}`);
 const ids = new Set();
 const SIREN_LO = 55;
 const SIREN_HI = 76;
@@ -26,11 +26,16 @@ for (const song of SONGS) {
   check(song.title && song.title.zh && song.title.en, `${song.id} 缺少双语歌名`);
   check([1, 2, 3].includes(song.level), `${song.id} 难度应为 1–3`);
   check(song.bpm >= 60 && song.bpm <= 140, `${song.id} bpm 超出 60–140`);
+  if (song.bpms) {
+    check(song.bpms.length === song.phrases.length, `${song.id} bpms 有 ${song.bpms.length} 个，句子有 ${song.phrases.length} 句`);
+    check(song.bpms.every((b) => b >= 60 && b <= 140), `${song.id} bpms 里有超出 60–140 的`);
+  }
+  const bpmAt = (i) => Music.phraseBpm(song, i);
 
   let parsed = true;
-  for (const p of song.phrases) {
+  for (const [i, p] of song.phrases.entries()) {
     try {
-      const notes = Music.phraseNotes(p, song.key, song.bpm);
+      const notes = Music.phraseNotes(p, song.key, bpmAt(i));
       check(notes.notes.length >= 3 && notes.notes.length <= 10, `${song.id} 句子 "${p}" 有 ${notes.notes.length} 个音（应 3–10）`);
       check(notes.durMs <= 7600, `${song.id} 句子 "${p}" 长 ${Math.round(notes.durMs)}ms（应 ≤ 7.6s）`);
     } catch (e) {
@@ -43,9 +48,9 @@ for (const song of SONGS) {
   check(r.lo >= SIREN_LO && r.hi <= SIREN_HI, `${song.id} 音域 ${r.lo}–${r.hi} 超出海妖音区 ${SIREN_LO}–${SIREN_HI}`);
   const f = Music.songFeatures(song);
   let totalMs = 0;
-  for (const p of song.phrases) totalMs += Music.phraseNotes(p, song.key, song.bpm).durMs;
+  song.phrases.forEach((p, i) => { totalMs += Music.phraseNotes(p, song.key, bpmAt(i)).durMs; });
   // 一句的实际耗时 ≈ 听 + 倒数两拍 + 唱 + 结果 0.8s
-  const playS = song.phrases.reduce((acc, p) => acc + (2 * Music.phraseNotes(p, song.key, song.bpm).durMs + 2 * Music.beatMs(song.bpm) + 1400) / 1000, 0);
+  const playS = song.phrases.reduce((acc, p, i) => acc + (2 * Music.phraseNotes(p, song.key, bpmAt(i)).durMs + 2 * Music.beatMs(bpmAt(i)) + 1400) / 1000, 0);
   check(playS >= 35 && playS <= 120, `${song.id} 预计时长 ${Math.round(playS)}s（应 35–120s）`);
   rows.push({ id: song.id, lv: song.level, span: f.span, leap: f.leap, semis: f.semis, longest: f.longest, phrases: f.phrases, play: Math.round(playS) + 's', range: `${r.lo}-${r.hi}` });
 }
@@ -62,5 +67,9 @@ check(Music.fitShift(twinkle, { lo: 57, hi: 66 }, 0) < 0, 'fitShift：低音区�
 check(Music.fitShift(twinkle, { lo: 30, hi: 40 }, 0) === -6, 'fitShift：移调不应超过 -6');
 check(Music.fitShift(twinkle, null, 2.4) === 2, 'fitShift：没有音区时用偏好移调');
 
+// phraseBpm：有 bpms 时每句用自己的拍速，没有时用整首的
+check(Music.phraseBpm({ bpm: 90 }, 3) === 90, 'phraseBpm：没有 bpms 时用整首的 bpm');
+check(Music.phraseBpm({ bpm: 90, bpms: [90, 120] }, 1) === 120, 'phraseBpm：有 bpms 时用这一句的');
+
 if (fails) { console.log(`\n曲库校验失败：${fails} 项`); process.exit(1); }
-console.log('  ✓ 20 首歌全部通过');
+console.log('  ✓ 31 首歌全部通过');

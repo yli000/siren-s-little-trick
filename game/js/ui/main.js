@@ -235,6 +235,7 @@
   }
 
   function boot() {
+    syncDocLang();   // 标签页标题先按语言设好，不等第一帧（后台打开的标签页可能一直没有帧）
     Gfx.resize();
     global.addEventListener('resize', Gfx.resize);
     UI.bindInput(unlock);
@@ -245,6 +246,7 @@
     ]).then(function () {
       var bootEl = doc.getElementById('boot');
       if (bootEl) bootEl.parentNode.removeChild(bootEl);
+      syncDocLang();
       App.go('title');
       App.trans = 1;
       global.requestAnimationFrame(function (n) { last = n; frame(n); });

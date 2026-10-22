@@ -272,7 +272,7 @@
     if (S.kind === 'song') {
       src = S.song.phrases[S.phraseIdx];
       tonic = S.song.key + S.shift;
-      bpm = S.song.bpm;
+      bpm = Music.phraseBpm(S.song, S.phraseIdx);
     } else if (S.kind === 'guide') {
       src = CFG.GUIDE.src;
       tonic = S.tonic;
